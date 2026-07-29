@@ -1,4 +1,4 @@
-import sharp from 'sharp';
+import sharp, { Stats, ChannelStats } from 'sharp';
 import { logger } from '@/utils/logger.js';
 import { FrequencyAnalyzer } from './FrequencyAnalyzer.js';
 import type { FrequencyAnalysisResult } from './FrequencyAnalyzer.js';
@@ -160,7 +160,7 @@ export class SharpTamperDetector {
    * Printed/scanned copies: abnormal uniformity (stdev < 20 per channel)
    * Digital copies: decorrelated RGB channels (stdev ratios far from 1.0)
    */
-  private analyzeColorHistogram(stats: sharp.Stats): { score: number; anomalies: string[] } {
+  private analyzeColorHistogram(stats: Stats): { score: number; anomalies: string[] } {
     const anomalies: string[] = [];
     const channels = stats.channels;
 
@@ -168,11 +168,11 @@ export class SharpTamperDetector {
       return { score: 1.0, anomalies: [] }; // Grayscale -- skip
     }
 
-    const stdevs = channels.slice(0, 3).map(c => c.stdev);
-    const means = channels.slice(0, 3).map(c => c.mean);
+    const stdevs = channels.slice(0, 3).map((c: ChannelStats) => c.stdev);
+    const means = channels.slice(0, 3).map((c: ChannelStats) => c.mean);
 
     // Check 4a: Abnormal uniformity -- all channels very low stdev
-    const avgStdev = stdevs.reduce((a, b) => a + b, 0) / stdevs.length;
+    const avgStdev = stdevs.reduce((a: number, b: number) => a + b, 0) / stdevs.length;
     if (avgStdev < 20) {
       anomalies.push('COLOR_ABNORMAL_UNIFORMITY');
     }
@@ -210,7 +210,7 @@ export class SharpTamperDetector {
    */
   private async detectDoubleCompression(
     imageBuffer: Buffer,
-    originalStats: sharp.Stats,
+    originalStats: Stats,
   ): Promise<{ detected: boolean; regionVariance: number }> {
     const meta = await sharp(imageBuffer).metadata();
     const width = meta.width || 0;
@@ -245,9 +245,9 @@ export class SharpTamperDetector {
             sharp(reEncoded50).extract(extractOpts).stats(),
           ]);
 
-          const origMean = origRegionStats.channels.reduce((s, c) => s + c.mean, 0) / origRegionStats.channels.length;
-          const re85Mean = re85RegionStats.channels.reduce((s, c) => s + c.mean, 0) / re85RegionStats.channels.length;
-          const re50Mean = re50RegionStats.channels.reduce((s, c) => s + c.mean, 0) / re50RegionStats.channels.length;
+          const origMean = origRegionStats.channels.reduce((s: number, c: ChannelStats) => s + c.mean, 0) / origRegionStats.channels.length;
+          const re85Mean = re85RegionStats.channels.reduce((s: number, c: ChannelStats) => s + c.mean, 0) / re85RegionStats.channels.length;
+          const re50Mean = re50RegionStats.channels.reduce((s: number, c: ChannelStats) => s + c.mean, 0) / re50RegionStats.channels.length;
 
           // ELA diff ratio: how differently this region responds to recompression
           const diff85 = Math.abs(origMean - re85Mean);

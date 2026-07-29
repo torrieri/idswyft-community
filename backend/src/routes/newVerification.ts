@@ -1227,15 +1227,21 @@ router.post('/:verification_id/front-document',
     const llmConfig = await getDeveloperLLMConfig(developerId);
 
     // Run front extraction — engine worker if available, local fallback otherwise
-    const frontResult = engineClient.isEnabled()
-      ? await engineClient.extractFront(req.file.buffer, {
-          documentId: document.id,
-          documentType: document_type,
-          issuingCountry: resolvedCountry,
-          verificationId: verification_id,
-          llmConfig,
-        })
-      : await extractFrontDocument(documentPath, document.id, document_type, resolvedCountry, verification_id, llmConfig, req.file.buffer);
+    let frontResult;
+    if (process.env.SKIP_OCR === 'true') {
+      frontResult = {
+        success: true,
+        ocr: { detected_document_type: document_type !== 'auto' ? document_type : 'id_card', first_name: 'MANUAL', last_name: 'REVIEW' },
+        confidence: 1.0,
+        tampering_detected: false
+      };
+      const { data: vrRow } = await supabase.from('verification_requests').select('addons').eq('id', verification_id).single();
+      await supabase.from('verification_requests').update({ addons: { ...(vrRow?.addons || {}), compliance_force_manual_review: true } }).eq('id', verification_id);
+    } else {
+      frontResult = engineClient.isEnabled()
+        ? await engineClient.extractFront(req.file.buffer, { documentId: document.id, documentType: document_type, issuingCountry: resolvedCountry, verificationId: verification_id, llmConfig })
+        : await extractFrontDocument(documentPath, document.id, document_type, resolvedCountry, verification_id, llmConfig, req.file.buffer);
+    }
 
     // Update document record with resolved document type if auto-classified
     const resolvedDocType = frontResult.ocr?.detected_document_type;

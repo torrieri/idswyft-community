@@ -32,5 +32,8 @@
   "devDependencies": {
     "concurrently": "^8.2.2"
   },
-  "workspaces": ["shared", "backend", "frontend", "engine"]
+  "workspaces": ["shared", "backend", "frontend", "engine"],
+  "overrides": {
+    "uuid": "^14.0.1"
+  }
 }

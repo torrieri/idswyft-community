@@ -9,11 +9,13 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "uuid": "14.0.1",
+    "vitest": "4.1.10",
     "zod": "^3.22.4"
   },
   "peerDependencies": {
-    "onnxruntime-node": "^1.26.0",
-    "sharp": "^0.34.5"
+    "onnxruntime-node": "^1.21.1",
+    "sharp": "^0.35.3"
   },
   "peerDependenciesMeta": {
     "sharp": {
