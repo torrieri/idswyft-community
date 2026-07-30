@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: idswyft
+resources:
+  - namespace.yaml
+  - database.yaml
+  - secrets-external.yaml
+  - s3-backup-external-secret.yaml
+  - image-pull-secret.yaml
+  - engine.yaml
+  - api.yaml
+  - frontend.yaml
+  - ingress.yaml
+configMapGenerator:
+  - name: idswyft-frontend-nginx
+    files:
+      - default.conf=idswyft-frontend-nginx.conf

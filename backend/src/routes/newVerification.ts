@@ -809,6 +809,7 @@ router.post('/initialize',
     body('addons').optional().isObject().withMessage('Addons must be an object'),
     body('addons.aml_screening').optional().isBoolean().withMessage('aml_screening must be a boolean'),
     body('addons.address_verification').optional().isBoolean().withMessage('address_verification must be a boolean'),
+    body('addons.force_manual_review').optional().isBoolean().withMessage('force_manual_review must be a boolean'),
     body('verification_mode').optional().isIn(['full', 'document_only', 'identity', 'age_only']).withMessage('verification_mode must be "full", "document_only", "identity", or "age_only"'),
     body('age_threshold').optional().isInt({ min: 1, max: 99 }).withMessage('age_threshold must be an integer between 1 and 99'),
   ],
@@ -873,6 +874,11 @@ router.post('/initialize',
         developerId,
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+
+    // ponytail: map explicit client request to internal manual review flag
+    if (req.body.addons?.force_manual_review) {
+      (resolvedAddons as any).compliance_force_manual_review = true;
     }
 
     // Recompute ageThreshold using resolvedMode in case compliance changed the mode
@@ -1227,15 +1233,21 @@ router.post('/:verification_id/front-document',
     const llmConfig = await getDeveloperLLMConfig(developerId);
 
     // Run front extraction — engine worker if available, local fallback otherwise
-    const frontResult = engineClient.isEnabled()
-      ? await engineClient.extractFront(req.file.buffer, {
-          documentId: document.id,
-          documentType: document_type,
-          issuingCountry: resolvedCountry,
-          verificationId: verification_id,
-          llmConfig,
-        })
-      : await extractFrontDocument(documentPath, document.id, document_type, resolvedCountry, verification_id, llmConfig, req.file.buffer);
+    let frontResult;
+    if (process.env.SKIP_OCR === 'true') {
+      frontResult = {
+        success: true,
+        ocr: { detected_document_type: document_type !== 'auto' ? document_type : 'id_card', first_name: 'MANUAL', last_name: 'REVIEW' },
+        confidence: 1.0,
+        tampering_detected: false
+      };
+      const { data: vrRow } = await supabase.from('verification_requests').select('addons').eq('id', verification_id).single();
+      await supabase.from('verification_requests').update({ addons: { ...(vrRow?.addons || {}), compliance_force_manual_review: true } }).eq('id', verification_id);
+    } else {
+      frontResult = engineClient.isEnabled()
+        ? await engineClient.extractFront(req.file.buffer, { documentId: document.id, documentType: document_type, issuingCountry: resolvedCountry, verificationId: verification_id, llmConfig })
+        : await extractFrontDocument(documentPath, document.id, document_type, resolvedCountry, verification_id, llmConfig, req.file.buffer);
+    }
 
     // Update document record with resolved document type if auto-classified
     const resolvedDocType = frontResult.ocr?.detected_document_type;

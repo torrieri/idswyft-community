@@ -167,3 +167,6 @@ caddy/certs/*.crt
 .agents/
 .aidesigner/
 .env*.local
+
+#
+graphify-out/
