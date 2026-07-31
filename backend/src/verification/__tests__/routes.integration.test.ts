@@ -338,6 +338,29 @@ describe('V2 Verification Routes — Integration', () => {
       // OCR result is preserved from the first call
       expect(second.body.ocr_data?.full_name).toBe('JOHN DOE');
     });
+
+    it('falls back to the session\'s issuing_country (set at /initialize) when the front-document call omits it', async () => {
+      // Re-initialize with issuing_country this time (overrides the describe-level
+      // beforeEach's plain init, since the mocked service always returns the same
+      // fixed verification_id).
+      await request(app)
+        .post('/api/v2/verify/initialize')
+        .send({
+          user_id: '550e8400-e29b-41d4-a716-446655440000',
+          issuing_country: 'DO',
+        });
+
+      // Upload the front document WITHOUT issuing_country in this request's body —
+      // this is the real-world case: the country was set once at /initialize, and
+      // the client shouldn't have to repeat it on every subsequent call.
+      await request(app)
+        .post('/api/v2/verify/a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e4e4e4/front-document')
+        .attach('document', fakeJpegBuffer(), 'front.jpg');
+
+      const stored = contextStore.get('a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e4e4e4');
+      const state = JSON.parse(stored.context);
+      expect(state.front_extraction.ocr.issuing_country).toBe('DO');
+    });
   });
 
   describe('POST /api/v2/verify/:id/back-document', () => {

@@ -1238,7 +1238,7 @@ router.post('/:verification_id/front-document',
     } as any);
 
     // Resolve issuing_country: per-request override > session state
-    const resolvedCountry = issuing_country?.toUpperCase() || undefined;
+    const resolvedCountry = issuing_country?.toUpperCase() || earlyState?.issuing_country || undefined;
 
     // Look up developer's LLM config for enhanced OCR extraction
     const developerId = (req as any).developer.id;
