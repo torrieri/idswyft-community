@@ -568,7 +568,7 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
     country: 'GT',
     document_types: [
       {
-        type: 'national_id', // DPI (Documento Personal de Identificación), RENAP
+        type: 'national_id', // DPI (Documento Personal de Identificaci\u00f3n), RENAP
         // 13-digit CUI, commonly printed grouped as "XXXX XXXXX XXXX";
         // spaces are optional so both grouped and bare-digit OCR reads match.
         id_number_regex: /^\d{4}\s?\d{5}\s?\d{4}$/,
