@@ -559,6 +559,69 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
     ],
   },
 
+  GT: {
+    // Guatemala — RENAP issues the DPI (national ID) and its 13-digit CUI
+    // numbering scheme. Field-label wording below is derived from public
+    // knowledge of the document layout, not a verified specimen — same
+    // basis as the HT entry above. Correct as real (redacted/synthetic)
+    // samples surface.
+    country: 'GT',
+    document_types: [
+      {
+        type: 'national_id', // DPI (Documento Personal de Identificación), RENAP
+        // 13-digit CUI, commonly printed grouped as "XXXX XXXXX XXXX";
+        // spaces are optional so both grouped and bare-digit OCR reads match.
+        id_number_regex: /^\d{4}\s?\d{5}\s?\d{4}$/,
+        field_labels: {
+          name: [/nombres?/i, /apellidos?/i, /name/i],
+          date_of_birth: [/fecha\s*de\s*nacimiento/i, /date\s*of\s*birth/i],
+          // DPI has a well-established 10-year printed validity.
+          expiry_date: [/fecha\s*de\s*vencimiento/i, /vence/i, /expiry/i],
+          id_number: [/\bcui\b/i, /c\u00f3digo\s*\u00fanico\s*de\s*identificaci\u00f3n/i, /id\s*no/i],
+          nationality: [/nacionalidad/i, /guatemalteca/i, /nationality/i],
+          address: [/domicilio/i, /direcci\u00f3n/i, /address/i],
+          issuing_authority: [/renap/i, /registro\s*nacional\s*de\s*las\s*personas/i, /authority/i],
+        },
+        date_format: 'DMY',
+        has_mrz: false,
+      },
+      {
+        type: 'passport',
+        // Same reasoning as DO's passport entry — MRZ is authoritative,
+        // this is a fallback/cross-check only.
+        id_number_regex: /^[A-Z]{1,2}\d{6,7}$/i,
+        field_labels: {
+          name: [/nombres?/i, /apellidos?/i, /name/i],
+          date_of_birth: [/fecha\s*de\s*nacimiento/i, /date\s*of\s*birth/i],
+          expiry_date: [/fecha\s*de\s*expiraci\u00f3n/i, /expiry/i],
+          id_number: [/pasaporte\s*n[oº°]/i, /passport\s*no/i, /id\s*no/i],
+          nationality: [/nacionalidad/i, /guatemalteca/i, /nationality/i],
+          address: [/direcci\u00f3n/i, /address/i],
+          issuing_authority: [/ministerio\s*de\s*relaciones\s*exteriores/i, /authority/i],
+        },
+        date_format: 'DMY',
+        has_mrz: true,
+      },
+      {
+        type: 'drivers_license',
+        // Historically issued per-municipality with no single national
+        // numbering scheme — kept intentionally broad pending a real sample.
+        id_number_regex: /^[A-Z0-9\-]{6,15}$/i,
+        field_labels: {
+          name: [/nombres?/i, /apellidos?/i, /name/i],
+          date_of_birth: [/fecha\s*de\s*nacimiento/i, /date\s*of\s*birth/i],
+          expiry_date: [/fecha\s*de\s*vencimiento/i, /vence/i, /expiry/i],
+          id_number: [/licencia/i, /no\.?\s*de\s*licencia/i, /id\s*no/i],
+          nationality: [/nacionalidad/i, /nationality/i],
+          address: [/direcci\u00f3n/i, /address/i],
+          issuing_authority: [/authority/i],
+        },
+        date_format: 'DMY',
+        has_mrz: false,
+      },
+    ],
+  },
+
   // -- Asia-Pacific ----------------------------------------------
 
   JP: {
@@ -754,6 +817,8 @@ export const INTERNATIONAL_HEADER_NOISE = new Set([
   'instituto nacional electoral',
   // Dominican Republic
   'rep\u00fablica dominicana', 'c\u00e9dula de identidad y electoral',
+  // Guatemala
+  'rep\u00fablica de guatemala', 'documento personal de identificaci\u00f3n', 'renap',
   // Portuguese
   'carteira nacional de habilita\u00e7\u00e3o', 'carta de condu\u00e7\u00e3o',
   // Dutch
