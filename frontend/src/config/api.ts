@@ -22,6 +22,27 @@ export const API_BASE_URL = _getApiBaseUrl();
 export const buildApiUrl = (path: string): URL =>
   new URL(`${API_BASE_URL}${path}`, window.location.origin);
 
+export const parseApiError = async (res: Response): Promise<string> => {
+  const contentType = res.headers.get('content-type') || '';
+  const text = await res.text();
+
+  if (contentType.includes('application/json')) {
+    try {
+      const body = JSON.parse(text);
+      return body.message || body.error?.message || String(body.error) || `HTTP ${res.status}`;
+    } catch {
+      return text.trim() || `HTTP ${res.status}`;
+    }
+  }
+
+  const snippet = text.trim().slice(0, 200).replace(/\s+/g, ' ');
+  if (snippet.startsWith('<!DOCTYPE') || snippet.startsWith('<html')) {
+    return `Server returned HTML instead of JSON (HTTP ${res.status}). Check the backend console / Network tab.`;
+  }
+
+  return snippet || `HTTP ${res.status}`;
+};
+
 // Determine if we should use sandbox mode
 export const shouldUseSandbox = (_apiKey?: string) => {
   // First check explicit environment override

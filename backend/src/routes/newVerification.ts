@@ -101,10 +101,11 @@ const upload = multer({
 interface VerificationAddons {
   aml_screening?: boolean;
   address_verification?: boolean;
+  force_manual_review?: boolean;
 }
 
 /** Create a VerificationSession with real service deps, optionally hydrated from DB */
-function createSession(isSandbox: boolean, hydration?: SessionHydration, addons?: VerificationAddons, developerAmlEnabled?: boolean, flow?: FlowConfig, voiceAuthEnabled?: boolean): VerificationSession {
+function createSession(isSandbox: boolean, hydration?: SessionHydration, addons?: VerificationAddons, developerAmlEnabled?: boolean, flow?: FlowConfig, voiceAuthEnabled?: boolean, maxGateRetries?: number): VerificationSession {
   // AML auto-triggers when: providers configured, not sandbox, developer hasn't disabled, addon not explicitly false
   const amlEnabled = amlProviders.length > 0
     && !isSandbox
@@ -132,7 +133,12 @@ function createSession(isSandbox: boolean, hydration?: SessionHydration, addons?
     voiceMatchThreshold: isSandbox ? 0.50 : 0.55,
   };
 
-  return new VerificationSession(deps, hydration, flow);
+  const options = {
+    forceManualReview: (addons as any)?.force_manual_review === true || (addons as any)?.compliance_force_manual_review === true,
+    maxGateRetries: maxGateRetries ?? 0,
+  };
+
+  return new VerificationSession(deps, hydration, flow, options);
 }
 
 /** Hydrate a session from DB for a given verification ID */
@@ -161,14 +167,17 @@ async function hydrateSession(verificationId: string, isSandbox: boolean, develo
     session_id: verificationId,
   };
 
-  // Read developer_id + verification_mode from the verification_requests row
+  // Read developer_id + verification_mode + addons from the verification_requests row
   let addons: VerificationAddons | undefined;
   let resolvedDeveloperId = developerId;
   const { data: row, error: rowError } = await supabase
     .from('verification_requests')
-    .select('developer_id, verification_mode')
+    .select('developer_id, verification_mode, addons')
     .eq('id', verificationId)
     .single();
+  if (row?.addons) {
+    addons = row.addons as VerificationAddons;
+  }
   if (rowError) {
     logger.error('hydrateSession: failed to read verification_requests', {
       verificationId, error: rowError.message, code: (rowError as any).code,
@@ -809,8 +818,11 @@ router.post('/initialize',
     body('addons').optional().isObject().withMessage('Addons must be an object'),
     body('addons.aml_screening').optional().isBoolean().withMessage('aml_screening must be a boolean'),
     body('addons.address_verification').optional().isBoolean().withMessage('address_verification must be a boolean'),
+    body('addons.force_manual_review').optional().isBoolean().withMessage('force_manual_review must be a boolean'),
     body('verification_mode').optional().isIn(['full', 'document_only', 'identity', 'age_only']).withMessage('verification_mode must be "full", "document_only", "identity", or "age_only"'),
     body('age_threshold').optional().isInt({ min: 1, max: 99 }).withMessage('age_threshold must be an integer between 1 and 99'),
+    body('force_manual_review').optional().isBoolean().withMessage('force_manual_review must be a boolean'),
+    body('max_gate_retries').optional().isInt({ min: 0, max: 5 }).withMessage('max_gate_retries must be 0-5'),
   ],
   validate,
   catchAsync(async (req: Request, res: Response) => {
@@ -875,6 +887,12 @@ router.post('/initialize',
       });
     }
 
+    // Preserve explicit client manual-review flags so they survive rehydration.
+    if (req.body.force_manual_review) {
+      (resolvedAddons as any).compliance_force_manual_review = true;
+      (resolvedAddons as any).force_manual_review = true;
+    }
+
     // Recompute ageThreshold using resolvedMode in case compliance changed the mode
     const resolvedAgeThreshold: number | null = resolvedMode === 'age_only'
       ? (req.body.age_threshold ?? 18)
@@ -917,7 +935,7 @@ router.post('/initialize',
 
     // Create session and save initial state
     const issuingCountryUpper = issuing_country?.toUpperCase() || null;
-    const session = createSession(isSandbox, { session_id: verificationRecord.id, issuing_country: issuingCountryUpper }, resolvedAddons, undefined, flow);
+    const session = createSession(isSandbox, { session_id: verificationRecord.id, issuing_country: issuingCountryUpper }, resolvedAddons, undefined, flow, undefined, req.body.max_gate_retries);
     await saveSessionState(verificationRecord.id, session.getState());
 
     logVerificationEvent('verification_initialized', verificationRecord.id, {
@@ -1227,15 +1245,21 @@ router.post('/:verification_id/front-document',
     const llmConfig = await getDeveloperLLMConfig(developerId);
 
     // Run front extraction — engine worker if available, local fallback otherwise
-    const frontResult = engineClient.isEnabled()
-      ? await engineClient.extractFront(req.file.buffer, {
-          documentId: document.id,
-          documentType: document_type,
-          issuingCountry: resolvedCountry,
-          verificationId: verification_id,
-          llmConfig,
-        })
-      : await extractFrontDocument(documentPath, document.id, document_type, resolvedCountry, verification_id, llmConfig, req.file.buffer);
+    let frontResult;
+    if (process.env.SKIP_OCR === 'true') {
+      frontResult = {
+        success: true,
+        ocr: { detected_document_type: document_type !== 'auto' ? document_type : 'id_card', first_name: 'MANUAL', last_name: 'REVIEW' },
+        confidence: 1.0,
+        tampering_detected: false
+      };
+      const { data: vrRow } = await supabase.from('verification_requests').select('addons').eq('id', verification_id).single();
+      await supabase.from('verification_requests').update({ addons: { ...(vrRow?.addons || {}), compliance_force_manual_review: true } }).eq('id', verification_id);
+    } else {
+      frontResult = engineClient.isEnabled()
+        ? await engineClient.extractFront(req.file.buffer, { documentId: document.id, documentType: document_type, issuingCountry: resolvedCountry, verificationId: verification_id, llmConfig })
+        : await extractFrontDocument(documentPath, document.id, document_type, resolvedCountry, verification_id, llmConfig, req.file.buffer);
+    }
 
     // Update document record with resolved document type if auto-classified
     const resolvedDocType = frontResult.ocr?.detected_document_type;
@@ -1300,6 +1324,17 @@ router.post('/:verification_id/front-document',
     await saveSessionState(verification_id, session.getState());
     recordStepTimestamp(verification_id, 'front'); // fire-and-forget
 
+    // Handle retryable gate responses
+    if (stepResult.retryable) {
+      return res.status(200).json({
+        retryable: true,
+        rejection_reason: stepResult.rejection_reason,
+        rejection_detail: stepResult.rejection_detail,
+        retries_left: stepResult.retries_left,
+        message: stepResult.user_message || 'Gate failed — please retry with a better image',
+      });
+    }
+
     // ─── Duplicate Detection (front document + face) ─────────
     let dedupFlags: DuplicateFlag[] = [];
     let dedupBlocked = false;
@@ -1336,15 +1371,18 @@ router.post('/:verification_id/front-document',
 
     // Update main DB record
     const state = session.getState();
+    const isSoftReject = !!state.rejection_reason && state.current_step !== VerificationStatus.HARD_REJECTED;
     let dbStatus: string;
     if (dedupBlocked) {
       dbStatus = 'failed';
     } else if (isAgeOnly) {
       const ageResult = state.current_step === VerificationStatus.COMPLETE ? 'verified' : 'failed';
-      dbStatus = (ageResult === 'verified' && (complianceForceReview || (dedupFlags.length > 0 && !dedupBlocked)))
+      dbStatus = (ageResult === 'verified' && (complianceForceReview || isSoftReject || (dedupFlags.length > 0 && !dedupBlocked)))
         ? 'manual_review' : ageResult;
     } else {
-      dbStatus = stepResult.passed ? 'processing' : 'failed';
+      dbStatus = (stepResult.passed && isSoftReject)
+        ? 'manual_review'
+        : stepResult.passed ? 'processing' : 'failed';
     }
     await verificationService.updateVerificationRequest(verification_id, {
       status: dbStatus,
@@ -1360,6 +1398,13 @@ router.post('/:verification_id/front-document',
     if (dedupFlags.length > 0 && !dedupBlocked && dedupAction === 'review') {
       await supabase.from('verification_requests').update({
         manual_review_reason: `Duplicate detected: ${dedupFlags.length} match(es) found`,
+      }).eq('id', verification_id);
+    }
+
+    // If manual review modes are active, store the reason for the queue
+    if (isSoftReject && !dedupBlocked && dedupAction !== 'review') {
+      await supabase.from('verification_requests').update({
+        manual_review_reason: state.rejection_detail || `Gate failed: ${state.rejection_reason}`,
       }).eq('id', verification_id);
     }
 
@@ -1554,8 +1599,20 @@ router.post('/:verification_id/back-document',
     await saveSessionState(verification_id, session.getState());
     recordStepTimestamp(verification_id, 'back'); // fire-and-forget
 
+    // Handle retryable gate responses
+    if (stepResult.retryable) {
+      return res.status(200).json({
+        retryable: true,
+        rejection_reason: stepResult.rejection_reason,
+        rejection_detail: stepResult.rejection_detail,
+        retries_left: stepResult.retries_left,
+        message: stepResult.user_message || 'Gate failed — please retry with a better image',
+      });
+    }
+
     // Update main DB record
     const state = session.getState();
+    const backIsSoftReject = !!state.rejection_reason && state.current_step !== VerificationStatus.HARD_REJECTED;
     let dbStatus: string;
     if (flow.preset === 'document_only' && state.current_step === VerificationStatus.COMPLETE) {
       // document_only: crossval passed → determine final status
@@ -1563,17 +1620,26 @@ router.post('/:verification_id/back-document',
       const docOnlyResult = crossValVerdict === 'REVIEW' ? 'manual_review'
         : crossValVerdict === 'REJECT' ? 'failed'
         : 'verified';
-      dbStatus = (docOnlyResult === 'verified' && complianceForceReview) ? 'manual_review' : docOnlyResult;
+      dbStatus = (docOnlyResult === 'verified' && (complianceForceReview || backIsSoftReject)) ? 'manual_review' : docOnlyResult;
       await verificationService.updateVerificationRequest(verification_id, {
         status: dbStatus,
         cross_validation_score: state.cross_validation?.overall_score ?? null,
         processing_completed_at: new Date().toISOString(),
       } as any);
     } else {
-      dbStatus = stepResult.passed ? 'processing' : 'failed';
+      dbStatus = (stepResult.passed && backIsSoftReject)
+        ? 'manual_review'
+        : stepResult.passed ? 'processing' : 'failed';
       await verificationService.updateVerificationRequest(verification_id, {
         status: dbStatus,
       } as any);
+    }
+
+    // Preserve manual review reason for the queue
+    if (backIsSoftReject && dbStatus === 'manual_review') {
+      await supabase.from('verification_requests').update({
+        manual_review_reason: state.rejection_detail || `Gate failed: ${state.rejection_reason}`,
+      }).eq('id', verification_id);
     }
 
     logVerificationEvent('back_document_processed', verification_id, {
@@ -1790,6 +1856,18 @@ router.post('/:verification_id/live-capture',
     (session as any).deps.processLiveCapture = async () => liveResult;
     const stepResult = await session.submitLiveCapture(req.file.buffer);
 
+    // Handle retryable gate responses
+    if (stepResult.retryable) {
+      await saveSessionState(verification_id, session.getState());
+      return res.status(200).json({
+        retryable: true,
+        rejection_reason: stepResult.rejection_reason,
+        rejection_detail: stepResult.rejection_detail,
+        retries_left: stepResult.retries_left,
+        message: stepResult.user_message || 'Gate failed — please retry with a better image',
+      });
+    }
+
     // ─── Velocity + Geo Analysis (non-sandbox only) ───────────
     if (stepResult.passed && !isSandbox) {
       try {
@@ -1858,10 +1936,12 @@ router.post('/:verification_id/live-capture',
 
     // Update main DB record
     const state = session.getState();
+    const liveIsSoftReject = !!state.rejection_reason && state.current_step !== VerificationStatus.HARD_REJECTED;
     let dbStatus: string;
     const hasVelocityFlags = (state.velocity_analysis?.flags?.length ?? 0) > 0;
     const hasGeoFlags = (state.geo_analysis?.flags?.length ?? 0) > 0;
-    const needsManualReview = state.cross_validation?.verdict === 'REVIEW'
+    const needsManualReview = liveIsSoftReject
+      || state.cross_validation?.verdict === 'REVIEW'
       || !!state.face_match?.skipped_reason
       || complianceForceReview
       || hasVelocityFlags
@@ -1884,6 +1964,12 @@ router.post('/:verification_id/live-capture',
       live_capture_completed: !!(state.face_match),
       ...(liveDedupBlocked && { failure_reason: 'Duplicate face detected in live capture' }),
     } as any);
+
+    if (liveIsSoftReject && dbStatus === 'manual_review') {
+      await supabase.from('verification_requests').update({
+        manual_review_reason: state.rejection_detail || `Gate failed: ${state.rejection_reason}`,
+      }).eq('id', verification_id);
+    }
 
     // Compute and persist risk score on terminal states
     if (state.current_step === VerificationStatus.COMPLETE || state.current_step === VerificationStatus.HARD_REJECTED) {

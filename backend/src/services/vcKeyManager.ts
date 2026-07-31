@@ -1,6 +1,6 @@
 import { EdDSASigner, hexToBytes, bytesToHex } from 'did-jwt';
 import * as ed25519 from '@noble/ed25519';
-import { sha512 } from '@noble/hashes/sha512';
+import { sha512 } from '@noble/hashes/sha2.js';
 
 // noble/ed25519 v2+ requires explicit sha512 hash registration
 ed25519.hashes.sha512 = sha512 as any;

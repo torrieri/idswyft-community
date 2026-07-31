@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { API_BASE_URL, buildApiUrl, shouldUseSandbox } from '../config/api';
+import { API_BASE_URL, buildApiUrl, parseApiError, shouldUseSandbox } from '../config/api';
 import {
   CameraIcon,
   ExclamationTriangleIcon,
@@ -693,8 +693,8 @@ const DemoPage: React.FC = () => {
         headers: { 'X-API-Key': apiKey },
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Failed to restart' }));
-        throw new Error(err.message || 'Failed to restart verification');
+        const err = await parseApiError(res);
+        throw new Error(err || 'Failed to restart verification');
       }
       cleanup();
       setSelectedFile(null);
@@ -1481,8 +1481,8 @@ const DemoPage: React.FC = () => {
         headers: { 'X-API-Key': apiKey },
       });
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to get voice challenge');
+        const err = await parseApiError(response);
+        throw new Error(err || 'Failed to get voice challenge');
       }
       const data = await response.json();
       setVoiceChallengeDigits(data.challenge_digits);
@@ -1571,8 +1571,8 @@ const DemoPage: React.FC = () => {
         body: formData,
       });
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Voice verification failed');
+        const err = await parseApiError(response);
+        throw new Error(err || 'Voice verification failed');
       }
       const result = await response.json();
       toast.success(result.voice_match_results?.passed ? 'Voice verified!' : 'Voice capture processed');

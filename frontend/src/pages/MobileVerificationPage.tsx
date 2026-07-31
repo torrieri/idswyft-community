@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, parseApiError } from '../config/api';
 import { sanitizeRedirectUrl, buildRedirectUrl } from '../utils/redirect';
 import IDCameraCapture from '../components/IDCameraCapture';
 import SelfieCameraCapture from '../components/SelfieCameraCapture';
@@ -497,7 +497,7 @@ const MobileVerificationPage: React.FC = () => {
   // ── API helper ─────────────────────────────────────────────────────────
   const apiGet = useCallback(async (path: string) => {
     const res = await fetch(`${API_BASE_URL}${path}`, { headers: { 'X-Handoff-Token': token! } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await parseApiError(res));
     return res.json();
   }, [token]);
 
@@ -514,7 +514,7 @@ const MobileVerificationPage: React.FC = () => {
           ...(ageThreshold && { age_threshold: ageThreshold }),
         }),
       });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.message || 'Failed to start'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Failed to start'); }
       const data = await res.json();
       if (!mountedRef.current) return;
       setVerificationId(data.verification_id);
@@ -607,7 +607,7 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/front-document`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.message || 'Upload failed'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Upload failed'); }
       if (!mountedRef.current) return;
       const data = await res.json().catch(() => null);
 
@@ -704,7 +704,7 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/back-document`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.message || 'Upload failed'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Upload failed'); }
       if (!mountedRef.current) return;
 
       // For document_only, the back-doc response may already include final_result
@@ -806,7 +806,7 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/live-capture`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
-      if (!res.ok) { const e = await res.json().catch(() => ({ message: 'Liveness check failed' })); throw new Error(e.message || 'Liveness check failed'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Liveness check failed'); }
       if (!mountedRef.current) return;
 
       // The live-capture response includes final_result — use it directly if available
@@ -848,7 +848,7 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/live-capture`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
-      if (!res.ok) { const e = await res.json().catch(() => ({ message: 'Selfie upload failed' })); throw new Error(e.message || 'Selfie upload failed'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Selfie upload failed'); }
       if (!mountedRef.current) return;
 
       // Use the response's final_result directly if available (avoids polling dependency)
@@ -924,7 +924,7 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/voice-challenge`, {
         method: 'POST', headers: { 'X-Handoff-Token': token },
       });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Failed to get challenge'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Failed to get challenge'); }
       const data = await res.json();
       setVoiceChallengeDigits(data.challenge_digits);
       setVoiceExpiresIn(data.expires_in_seconds);
@@ -992,7 +992,7 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/voice-capture`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Voice verification failed'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Voice verification failed'); }
       if (voiceExpiryRef.current) clearInterval(voiceExpiryRef.current);
       // Go to done screen and poll for final result
       setScreenIdx(SCREEN_IDX.done);
@@ -1015,8 +1015,8 @@ const MobileVerificationPage: React.FC = () => {
         headers: { 'X-Handoff-Token': token },
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Failed to restart' }));
-        throw new Error(err.message || 'Failed to restart verification');
+        const err = await parseApiError(res);
+        throw new Error(err || 'Failed to restart verification');
       }
       if (!mountedRef.current) return;
       // Reset all local state — reuse same verificationId

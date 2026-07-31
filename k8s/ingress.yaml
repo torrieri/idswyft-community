@@ -1,0 +1,33 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: idswyft-frontend
+  namespace: idswyft
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`idswyft.tk.hv.orkapi.net`)
+      services:
+        - name: idswyft-frontend
+          port: 8080
+  tls:
+    certResolver: letsencrypt
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: idswyft-api
+  namespace: idswyft
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`api.idswyft.tk.hv.orkapi.net`)
+      services:
+        - name: idswyft-api
+          port: 3001
+  tls:
+    certResolver: letsencrypt

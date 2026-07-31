@@ -1,0 +1,32 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: idswyft-db
+  namespace: idswyft
+spec:
+  instances: 3
+  affinity:
+    enablePodAntiAffinity: true
+    podAntiAffinityType: required
+    topologyKey: kubernetes.io/hostname
+  imageName: ghcr.io/cloudnative-pg/postgresql:16
+  primaryUpdateStrategy: unsupervised
+  storage:
+    size: 20Gi
+    storageClass: proxmox-thin
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://orkapi-cnpg-backups/pg-clusters/idswyft-db
+      s3Credentials:
+        accessKeyId:
+          name: s3-backup-credentials
+          key: AWS_ACCESS_KEY_ID
+        secretAccessKey:
+          name: s3-backup-credentials
+          key: AWS_SECRET_ACCESS_KEY
+      wal:
+        compression: gzip
+        maxParallel: 2
+  bootstrap:
+    initdb:
+      database: idswyft

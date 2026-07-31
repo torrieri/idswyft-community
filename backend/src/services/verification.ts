@@ -26,7 +26,10 @@ export class VerificationService {
       is_sandbox: data.is_sandbox ?? false,
       source: data.source ?? 'api',
     };
-    if (data.addons) insertData.addons = data.addons;
+
+    if (data.addons && Object.keys(data.addons).length > 0) {
+      insertData.addons = data.addons;
+    }
 
     const { data: verification, error } = await supabase
       .from('verification_requests')

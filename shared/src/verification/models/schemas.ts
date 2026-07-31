@@ -44,7 +44,6 @@ const RejectionReasonEnum = z.enum([
   'VOICE_CHALLENGE_FAILED',
 ]);
 
-// --- Verification Status (10 states per spec) ---
 export const VerificationStatus = {
   AWAITING_FRONT: 'AWAITING_FRONT',
   FRONT_PROCESSING: 'FRONT_PROCESSING',
@@ -328,6 +327,8 @@ export interface SessionState {
   velocity_analysis: VelocityAnalysisResult | null;
   geo_analysis: GeoAnalysisResult | null;
   voice_match: VoiceMatchResult | null;
+  force_manual_review?: boolean;
+  gate_retry_count?: number;
   created_at: string;
   updated_at: string;
   completed_at: string | null;

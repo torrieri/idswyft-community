@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { API_BASE_URL } from '../../config/api';
+import { API_BASE_URL, parseApiError } from '../../config/api';
 import { sanitizeRedirectUrl } from '../../utils/redirect';
 import { ContinueOnPhone } from '../ContinueOnPhone';
 import { LiveCaptureWidget } from './LiveCaptureWidget';
@@ -171,7 +171,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
     const res = await fetch(`${API_BASE_URL}${path}`, {
       headers: authHeader,
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await parseApiError(res));
     return res.json();
   };
 
@@ -197,8 +197,8 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         }),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to start verification');
+        const err = await parseApiError(res);
+        throw new Error(err || 'Failed to start verification');
       }
       const data = await res.json();
       if (!mountedRef.current) return;
@@ -234,8 +234,8 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         body: formData,
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to upload document');
+        const err = await parseApiError(res);
+        throw new Error(err || 'Failed to upload document');
       }
       const data = await res.json();
       // Age-only mode: front-document response includes final_result directly
@@ -333,8 +333,8 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         body: formData,
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to upload back document');
+        const err = await parseApiError(res);
+        throw new Error(err || 'Failed to upload back document');
       }
       toast.success('Back document uploaded');
       setCurrentStep(5);
@@ -412,7 +412,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         method: 'POST',
         headers: authHeader,
       });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed to get challenge'); }
+      if (!res.ok) { const err = await parseApiError(res); throw new Error(err || 'Failed to get challenge'); }
       const data = await res.json();
       setVoiceChallengeDigits(data.challenge_digits);
       setVoiceExpiresIn(data.expires_in_seconds);
@@ -576,8 +576,8 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         headers: authHeader,
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to restart verification');
+        const err = await parseApiError(res);
+        throw new Error(err || 'Failed to restart verification');
       }
       if (!mountedRef.current) return;
       // Reset local state — reuse same verificationId (server reset it)

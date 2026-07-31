@@ -594,3 +594,98 @@ describe('VerificationSession — Passport Back-Skip', () => {
     expect(session.getFlow().preset).toBe('liveness_only');
   });
 });
+
+describe('VerificationSession — forceManualReview', () => {
+  it('continues to AWAITING_BACK when Gate 1 fails', async () => {
+    mockExtractFront.mockResolvedValue({
+      ...mockFrontResult,
+      ocr: { ...mockFrontResult.ocr, full_name: '', date_of_birth: '', id_number: '', expiry_date: '' },
+      ocr_confidence: 0.1,
+    });
+
+    const session = new VerificationSession({
+      extractFront: mockExtractFront,
+      extractBack: mockExtractBack,
+      processLiveCapture: mockProcessLiveCapture,
+      computeFaceMatch: mockComputeFaceMatch,
+      faceMatchThreshold: 0.60,
+    }, undefined, undefined, { forceManualReview: true });
+
+    const result = await session.submitFront(Buffer.from('front'));
+    expect(result.passed).toBe(true);
+    expect(session.getState().current_step).toBe(VerificationStatus.AWAITING_BACK);
+    expect(session.getState().rejection_reason).toBe('FRONT_OCR_FAILED');
+  });
+
+  it('completes with rejection_reason set when Gate 5 fails', async () => {
+    mockComputeFaceMatch.mockReturnValue({
+      similarity_score: 0.30,
+      passed: false,
+      threshold_used: 0.60,
+    });
+
+    const session = new VerificationSession({
+      extractFront: mockExtractFront,
+      extractBack: mockExtractBack,
+      processLiveCapture: mockProcessLiveCapture,
+      computeFaceMatch: mockComputeFaceMatch,
+      faceMatchThreshold: 0.60,
+    }, undefined, undefined, { forceManualReview: true });
+
+    await session.submitFront(Buffer.from('front'));
+    await session.submitBack(Buffer.from('back'));
+    const result = await session.submitLiveCapture(Buffer.from('selfie'));
+    expect(result.passed).toBe(true);
+    expect(session.getState().current_step).toBe(VerificationStatus.COMPLETE);
+    expect(session.getState().rejection_reason).toBe('FACE_MATCH_FAILED');
+    expect(session.getState().completed_at).toBeTruthy();
+  });
+});
+
+describe('VerificationSession — gateRetry', () => {
+  it('returns retryable response when gate fails and retries remain', async () => {
+    mockExtractFront.mockResolvedValue({
+      ...mockFrontResult,
+      ocr: { ...mockFrontResult.ocr, full_name: '', date_of_birth: '', id_number: '', expiry_date: '' },
+      ocr_confidence: 0.1,
+    });
+
+    const session = new VerificationSession({
+      extractFront: mockExtractFront,
+      extractBack: mockExtractBack,
+      processLiveCapture: mockProcessLiveCapture,
+      computeFaceMatch: mockComputeFaceMatch,
+      faceMatchThreshold: 0.60,
+    }, undefined, undefined, { maxGateRetries: 2 });
+
+    const result = await session.submitFront(Buffer.from('front'));
+    expect(result.passed).toBe(false);
+    expect(result.retryable).toBe(true);
+    expect(result.retries_left).toBe(1);
+    expect(session.getState().current_step).toBe(VerificationStatus.AWAITING_FRONT);
+  });
+
+  it('hard rejects after retries exhausted', async () => {
+    mockExtractFront.mockResolvedValue({
+      ...mockFrontResult,
+      ocr: { ...mockFrontResult.ocr, full_name: '', date_of_birth: '', id_number: '', expiry_date: '' },
+      ocr_confidence: 0.1,
+    });
+
+    const session = new VerificationSession({
+      extractFront: mockExtractFront,
+      extractBack: mockExtractBack,
+      processLiveCapture: mockProcessLiveCapture,
+      computeFaceMatch: mockComputeFaceMatch,
+      faceMatchThreshold: 0.60,
+    }, undefined, undefined, { maxGateRetries: 1 });
+
+    const result1 = await session.submitFront(Buffer.from('front'));
+    expect(result1.retryable).toBe(true);
+
+    const result2 = await session.submitFront(Buffer.from('front'));
+    expect(result2.passed).toBe(false);
+    expect(result2.retryable).toBeUndefined();
+    expect(session.getState().current_step).toBe(VerificationStatus.HARD_REJECTED);
+  });
+});

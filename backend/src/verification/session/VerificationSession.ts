@@ -56,6 +56,8 @@ export interface StepResult {
   rejection_reason: string | null;
   rejection_detail: string | null;
   user_message: string | null;
+  retryable?: boolean;
+  retries_left?: number;
 }
 
 /** Age verification result — never exposes actual DOB */
@@ -106,18 +108,31 @@ export interface SessionHydration {
   velocity_analysis?: VelocityAnalysisResult | null;
   geo_analysis?: GeoAnalysisResult | null;
   voice_match?: VoiceMatchResult | null;
+  force_manual_review?: boolean;
+  gate_retry_count?: number;
   created_at?: string;
   completed_at?: string | null;
+}
+
+export interface SessionOptions {
+  forceManualReview?: boolean;
+  maxGateRetries?: number;
 }
 
 export class VerificationSession {
   private state: SessionState;
   private deps: SessionDeps;
   private flow: FlowConfig;
+  private forceManualReview: boolean;
+  private maxGateRetries: number;
+  private gateRetryCount: number;
 
-  constructor(deps: SessionDeps, hydration?: SessionHydration, flow?: FlowConfig) {
+  constructor(deps: SessionDeps, hydration?: SessionHydration, flow?: FlowConfig, options: SessionOptions = {}) {
     this.deps = deps;
     this.flow = flow ?? FLOW_PRESETS.full;
+    this.forceManualReview = options.forceManualReview ?? false;
+    this.maxGateRetries = options.maxGateRetries ?? 0;
+    this.gateRetryCount = hydration?.gate_retry_count ?? 0;
     const now = new Date().toISOString();
     this.state = {
       session_id: hydration?.session_id ?? randomUUID(),
@@ -136,6 +151,8 @@ export class VerificationSession {
       velocity_analysis: hydration?.velocity_analysis ?? null,
       geo_analysis: hydration?.geo_analysis ?? null,
       voice_match: hydration?.voice_match ?? null,
+      force_manual_review: hydration?.force_manual_review ?? this.forceManualReview,
+      gate_retry_count: this.gateRetryCount,
       created_at: hydration?.created_at ?? now,
       updated_at: now,
       completed_at: hydration?.completed_at ?? null,
@@ -161,14 +178,24 @@ export class VerificationSession {
     this.transition(VerificationStatus.FRONT_PROCESSING);
 
     const frontResult = await this.deps.extractFront(imageBuffer);
+
     const gate = evaluateGate1(frontResult);
 
     if (!gate.passed) {
-      return this.hardReject(gate);
+      const result = this.hardReject(gate, VerificationStatus.AWAITING_FRONT);
+      if (result.passed && this.forceManualReview) {
+        this.state.front_extraction = frontResult;
+        this.applyPassportOverrideAndAdvance(frontResult);
+      }
+      return result;
     }
 
     this.state.front_extraction = frontResult;
+    this.applyPassportOverrideAndAdvance(frontResult);
+    return this.passResult();
+  }
 
+  private applyPassportOverrideAndAdvance(frontResult: FrontExtractionResult): void {
     // Passports are single-sided — skip back document + cross-validation
     this.flow = applyPassportOverride(this.flow, frontResult.ocr?.detected_document_type as string | undefined);
 
@@ -178,8 +205,6 @@ export class VerificationSession {
     if (this.state.current_step === VerificationStatus.COMPLETE) {
       this.state.completed_at = new Date().toISOString();
     }
-
-    return this.passResult();
   }
 
   /**
@@ -192,10 +217,17 @@ export class VerificationSession {
     this.transition(VerificationStatus.FRONT_PROCESSING);
 
     const frontResult = await this.deps.extractFront(imageBuffer);
+
     const gate = evaluateGate1(frontResult);
 
     if (!gate.passed) {
-      return this.hardReject(gate);
+      const result = this.hardReject(gate);
+      if (result.passed && this.forceManualReview) {
+        this.state.front_extraction = frontResult;
+        this.transition(VerificationStatus.COMPLETE);
+        this.state.completed_at = new Date().toISOString();
+      }
+      return result;
     }
 
     this.state.front_extraction = frontResult;
@@ -203,13 +235,24 @@ export class VerificationSession {
     // Extract and validate DOB
     const dobStr = frontResult.ocr?.date_of_birth;
     if (!dobStr) {
+      const reason = 'Date of birth could not be extracted from document';
+      if (this.forceManualReview) {
+        this.state.rejection_reason = 'DOB_NOT_FOUND' as any;
+        this.state.rejection_detail = reason;
+        this.transition(VerificationStatus.COMPLETE);
+        this.state.completed_at = new Date().toISOString();
+        return {
+          ...this.passResult(),
+          age_verification: { is_of_age: false, age_threshold: ageThreshold },
+        };
+      }
       this.state.rejection_reason = 'DOB_NOT_FOUND' as any;
-      this.state.rejection_detail = 'Date of birth could not be extracted from document';
+      this.state.rejection_detail = reason;
       this.transition(VerificationStatus.HARD_REJECTED);
       return {
         passed: false,
         rejection_reason: 'DOB_NOT_FOUND',
-        rejection_detail: 'Date of birth could not be extracted from document',
+        rejection_detail: reason,
         user_message: 'We could not read the date of birth on your document. Please try again with a clearer image.',
       };
     }
@@ -217,13 +260,24 @@ export class VerificationSession {
     // Parse DOB — supports YYYY-MM-DD, MM/DD/YYYY, MM-DD-YYYY
     const dob = this.parseDOB(dobStr);
     if (!dob) {
+      const reason = `Date of birth format unrecognized: ${dobStr}`;
+      if (this.forceManualReview) {
+        this.state.rejection_reason = 'DOB_NOT_FOUND' as any;
+        this.state.rejection_detail = reason;
+        this.transition(VerificationStatus.COMPLETE);
+        this.state.completed_at = new Date().toISOString();
+        return {
+          ...this.passResult(),
+          age_verification: { is_of_age: false, age_threshold: ageThreshold },
+        };
+      }
       this.state.rejection_reason = 'DOB_NOT_FOUND' as any;
-      this.state.rejection_detail = `Date of birth format unrecognized: ${dobStr}`;
+      this.state.rejection_detail = reason;
       this.transition(VerificationStatus.HARD_REJECTED);
       return {
         passed: false,
         rejection_reason: 'DOB_NOT_FOUND',
-        rejection_detail: `Date of birth format unrecognized: ${dobStr}`,
+        rejection_detail: reason,
         user_message: 'We could not parse the date of birth on your document. Please try again with a clearer image.',
       };
     }
@@ -237,13 +291,24 @@ export class VerificationSession {
     (this.state as any).age_verification = ageVerification;
 
     if (!isOfAge) {
+      const reason = `Subject does not meet the minimum age requirement of ${ageThreshold}`;
+      if (this.forceManualReview) {
+        this.state.rejection_reason = 'UNDERAGE' as any;
+        this.state.rejection_detail = reason;
+        this.transition(VerificationStatus.COMPLETE);
+        this.state.completed_at = new Date().toISOString();
+        return {
+          ...this.passResult(),
+          age_verification: ageVerification,
+        };
+      }
       this.state.rejection_reason = 'UNDERAGE' as any;
-      this.state.rejection_detail = `Subject does not meet the minimum age requirement of ${ageThreshold}`;
+      this.state.rejection_detail = reason;
       this.transition(VerificationStatus.HARD_REJECTED);
       return {
         passed: false,
         rejection_reason: 'UNDERAGE',
-        rejection_detail: `Subject does not meet the minimum age requirement of ${ageThreshold}`,
+        rejection_detail: reason,
         user_message: `You must be at least ${ageThreshold} years old to proceed.`,
         age_verification: ageVerification,
       };
@@ -267,10 +332,21 @@ export class VerificationSession {
     this.transition(VerificationStatus.BACK_PROCESSING);
 
     const backResult = await this.deps.extractBack(imageBuffer);
+
     const gate2 = evaluateGate2(backResult, this.state.front_extraction!, this.state.issuing_country);
 
     if (!gate2.passed) {
-      return this.hardReject(gate2);
+      const result = this.hardReject(gate2, VerificationStatus.AWAITING_BACK);
+      if (result.passed && this.forceManualReview) {
+        this.state.back_extraction = backResult;
+        this.state.cross_validation = crossValidate(this.state.front_extraction!, backResult);
+        const afterCrossVal = this.flow.afterCrossVal as VerificationStatusType;
+        this.transition(afterCrossVal);
+        if (afterCrossVal === VerificationStatus.COMPLETE) {
+          this.state.completed_at = new Date().toISOString();
+        }
+      }
+      return result;
     }
 
     this.state.back_extraction = backResult;
@@ -282,7 +358,15 @@ export class VerificationSession {
 
     const gate3 = evaluateGate3(crossValResult);
     if (!gate3.passed) {
-      return this.hardReject(gate3);
+      const result = this.hardReject(gate3);
+      if (result.passed && this.forceManualReview) {
+        const afterCrossVal = this.flow.afterCrossVal as VerificationStatusType;
+        this.transition(afterCrossVal);
+        if (afterCrossVal === VerificationStatus.COMPLETE) {
+          this.state.completed_at = new Date().toISOString();
+        }
+      }
+      return result;
     }
 
     const afterCrossVal = this.flow.afterCrossVal as VerificationStatusType;
@@ -306,15 +390,44 @@ export class VerificationSession {
     this.transition(VerificationStatus.LIVE_PROCESSING);
 
     const liveResult = await this.deps.processLiveCapture(imageBuffer);
+
     const gate4 = evaluateGate4(liveResult);
 
     if (!gate4.passed) {
-      return this.hardReject(gate4);
+      const result = this.hardReject(gate4, VerificationStatus.AWAITING_LIVE);
+      if (result.passed && this.forceManualReview) {
+        this.computeAndStoreLiveCaptureResults(liveResult);
+        this.computeAgeEstimation(liveResult);
+        await this.runAMLScreening();
+        return this.finalizeAfterLiveCapture();
+      }
+      return result;
     }
 
     // Auto-trigger Step 5: Face Match
     this.transition(VerificationStatus.FACE_MATCHING);
+    this.computeAndStoreLiveCaptureResults(liveResult);
 
+    const gate5 = evaluateGate5(this.state.face_match!);
+    if (!gate5.passed) {
+      const result = this.hardReject(gate5, VerificationStatus.AWAITING_LIVE);
+      if (result.passed && this.forceManualReview) {
+        this.computeAgeEstimation(liveResult);
+        await this.runAMLScreening();
+        return this.finalizeAfterLiveCapture();
+      }
+      return result;
+    }
+
+    // Compute age estimation from face age + DOB
+    this.computeAgeEstimation(liveResult);
+
+    await this.runAMLScreening();
+
+    return this.finalizeAfterLiveCapture();
+  }
+
+  private computeAndStoreLiveCaptureResults(liveResult: LiveCaptureResult): void {
     const idEmbedding = this.state.front_extraction!.face_embedding;
     const liveEmbedding = liveResult.face_embedding;
     const threshold = this.deps.faceMatchThreshold ?? 0.60;
@@ -352,16 +465,9 @@ export class VerificationSession {
       score: liveResult.liveness_score,
     };
     this.state.deepfake_check = liveResult.deepfake_check ?? null;
+  }
 
-    const gate5 = evaluateGate5(faceMatchResult);
-    if (!gate5.passed) {
-      return this.hardReject(gate5);
-    }
-
-    // Compute age estimation from face age + DOB
-    this.computeAgeEstimation(liveResult);
-
-    // Auto-trigger Gate 6: AML/Sanctions Screening (optional)
+  private async runAMLScreening(): Promise<void> {
     if (this.deps.screenAML && this.state.front_extraction?.ocr) {
       try {
         const ocr = this.state.front_extraction.ocr;
@@ -389,8 +495,8 @@ export class VerificationSession {
           };
 
           const gate6 = evaluateGate6(amlResult);
-          if (!gate6.passed) {
-            return this.hardReject(gate6);
+          if (!gate6.passed && !this.forceManualReview) {
+            this.hardReject(gate6);
           }
         }
       } catch {
@@ -398,15 +504,19 @@ export class VerificationSession {
         this.state.aml_screening = null;
       }
     }
+  }
 
+  private finalizeAfterLiveCapture(): StepResult {
     // Voice auth enabled → pause for voice capture instead of completing
-    if (this.deps.voiceAuthEnabled) {
+    if (this.deps.voiceAuthEnabled && this.state.current_step !== VerificationStatus.HARD_REJECTED) {
       this.transition(VerificationStatus.AWAITING_VOICE);
       return this.passResult();
     }
 
-    this.transition(VerificationStatus.COMPLETE);
-    this.state.completed_at = new Date().toISOString();
+    if (this.state.current_step !== VerificationStatus.HARD_REJECTED) {
+      this.transition(VerificationStatus.COMPLETE);
+      this.state.completed_at = new Date().toISOString();
+    }
     return this.passResult();
   }
 
@@ -425,7 +535,12 @@ export class VerificationSession {
 
     const gate7 = evaluateGate7(voiceMatch);
     if (!gate7.passed) {
-      return this.hardReject(gate7);
+      const result = this.hardReject(gate7);
+      if (result.passed && this.forceManualReview) {
+        this.transition(VerificationStatus.COMPLETE);
+        this.state.completed_at = new Date().toISOString();
+      }
+      return result;
     }
 
     this.transition(VerificationStatus.COMPLETE);
@@ -451,8 +566,30 @@ export class VerificationSession {
     this.state.updated_at = new Date().toISOString();
   }
 
-  /** Handle a gate failure — transition to HARD_REJECTED */
-  private hardReject(gate: GateResult): StepResult {
+  /**
+   * Handle a gate failure — transition to HARD_REJECTED unless manual review
+   * modes are enabled, in which case we record the failure and keep the flow
+   * alive so a human can review later.
+   */
+  private hardReject(gate: GateResult, retryStep?: VerificationStatusType): StepResult {
+    if (this.forceManualReview) {
+      return this.softReject(gate);
+    }
+
+    if (this.gateRetryCount < this.maxGateRetries && retryStep) {
+      this.gateRetryCount++;
+      this.state.gate_retry_count = this.gateRetryCount;
+      this.transition(retryStep);
+      return {
+        passed: false,
+        rejection_reason: gate.rejection_reason,
+        rejection_detail: gate.rejection_detail,
+        user_message: gate.user_message,
+        retryable: true,
+        retries_left: this.maxGateRetries - this.gateRetryCount,
+      };
+    }
+
     this.state.rejection_reason = gate.rejection_reason as any;
     this.state.rejection_detail = gate.rejection_detail;
     this.transition(VerificationStatus.HARD_REJECTED);
@@ -461,6 +598,21 @@ export class VerificationSession {
       rejection_reason: gate.rejection_reason,
       rejection_detail: gate.rejection_detail,
       user_message: gate.user_message,
+    };
+  }
+
+  /**
+   * Convert a gate failure into a manual-review marker without stopping the
+   * flow. Callers are responsible for advancing the step before returning.
+   */
+  private softReject(gate: GateResult): StepResult {
+    this.state.rejection_reason = gate.rejection_reason as any;
+    this.state.rejection_detail = gate.rejection_detail;
+    return {
+      passed: true,
+      rejection_reason: null,
+      rejection_detail: null,
+      user_message: null,
     };
   }
 

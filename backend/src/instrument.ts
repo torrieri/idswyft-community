@@ -1,5 +1,4 @@
 import * as Sentry from '@sentry/node';
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import { scrubSentryEvent } from '@idswyft/shared';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -9,12 +8,24 @@ const sentryDsn = process.env.SENTRY_DSN;
 // path without depending on @idswyft/shared dist resolution at test time.
 export { scrubSentryEvent, redactPII, scrubText } from '@idswyft/shared';
 
+let profilingIntegration: ReturnType<typeof import('@sentry/profiling-node').nodeProfilingIntegration> | undefined;
+try {
+  const profiling = await import('@sentry/profiling-node');
+  profilingIntegration = profiling.nodeProfilingIntegration();
+} catch {
+  // Native profiler may not be available for this Node version (e.g. Node 25).
+  // Sentry still works without profiling.
+}
+
 if (isProduction && sentryDsn) {
+  const integrations: any[] = [];
+  if (profilingIntegration) {
+    integrations.push(profilingIntegration);
+  }
+
   Sentry.init({
     dsn: sentryDsn,
-    integrations: [
-      nodeProfilingIntegration(),
-    ],
+    integrations,
     enableLogs: true,
     tracesSampleRate: 1.0,
     profileSessionSampleRate: 1.0,

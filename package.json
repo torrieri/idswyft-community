@@ -30,7 +30,11 @@
   "author": "Idswyft Team",
   "license": "MIT",
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "sharp": "^0.35.3"
   },
-  "workspaces": ["shared", "backend", "frontend", "engine"]
+  "workspaces": ["shared", "backend", "frontend", "engine"],
+  "overrides": {
+    "uuid": "^14.0.1"
+  }
 }
