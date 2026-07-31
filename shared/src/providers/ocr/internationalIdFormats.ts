@@ -494,24 +494,24 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
   },
 
   DO: {
-    // Dominican Republic \u2014 Junta Central Electoral (JCE) issues the c\u00e9dula
+    // Dominican Republic — Junta Central Electoral (JCE) issues the cédula
     // and driver's licence numbering; INTRANT issues the licence itself.
     // Field-label wording below is derived from public knowledge of the
-    // document layout, not a verified specimen \u2014 same basis as the HT
+    // document layout, not a verified specimen — same basis as the HT
     // entry above. Correct as real (redacted/synthetic) samples surface.
     country: 'DO',
     document_types: [
       {
-        type: 'national_id', // C\u00e9dula de Identidad y Electoral (JCE)
-        // JCE c\u00e9dula number: 000-0000000-0 (11 digits, 2 hyphens). Stable
-        // and public \u2014 it doubles as the tax/RNC cross-reference number.
+        type: 'national_id', // Cédula de Identidad y Electoral (JCE)
+        // JCE cédula number: 000-0000000-0 (11 digits, 2 hyphens). Stable
+        // and public — it doubles as the tax/RNC cross-reference number.
         id_number_regex: /^\d{3}-\d{7}-\d{1}$/,
         field_labels: {
           name: [/nombres?/i, /apellidos?/i, /name/i],
           date_of_birth: [/fecha\s*de\s*nacimiento/i, /nacimiento/i, /date\s*of\s*birth/i],
           // Unverified: public sources disagree on whether the current
-          // c\u00e9dula design prints an expiration date. Included defensively
-          // \u2014 harmless if it never matches.
+          // cédula design prints an expiration date. Included defensively
+          // — harmless if it never matches.
           expiry_date: [/fecha\s*de\s*expiraci\u00f3n/i, /v\u00e1lida?\s*hasta/i, /expiry/i],
           id_number: [/c\u00e9dula/i, /no\.?\s*(?:de\s*)?identificaci\u00f3n/i, /id\s*no/i],
           nationality: [/nacionalidad/i, /nationality/i],
@@ -525,7 +525,7 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
         type: 'passport',
         // ICAO passport number: 1-2 letters + 6-7 digits, consistent with
         // other passport entries here. The MRZ (parsed generically
-        // elsewhere) is authoritative \u2014 this is a fallback/cross-check.
+        // elsewhere) is authoritative — this is a fallback/cross-check.
         id_number_regex: /^[A-Z]{1,2}\d{6,7}$/i,
         field_labels: {
           name: [/nombres?/i, /apellidos?/i, /name/i],
@@ -541,7 +541,7 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
       },
       {
         type: 'drivers_license', // INTRANT
-        // INTRANT licences are tied to the holder's c\u00e9dula number, so they
+        // INTRANT licences are tied to the holder's cédula number, so they
         // share its 000-0000000-0 shape.
         id_number_regex: /^\d{3}-\d{7}-\d{1}$/,
         field_labels: {
@@ -568,7 +568,7 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
     country: 'GT',
     document_types: [
       {
-        type: 'national_id', // DPI (Documento Personal de Identificaci\u00f3n), RENAP
+        type: 'national_id', // DPI (Documento Personal de Identificación), RENAP
         // 13-digit CUI, commonly printed grouped as "XXXX XXXXX XXXX";
         // spaces are optional so both grouped and bare-digit OCR reads match.
         id_number_regex: /^\d{4}\s?\d{5}\s?\d{4}$/,
