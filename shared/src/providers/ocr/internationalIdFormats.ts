@@ -493,6 +493,72 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
     ],
   },
 
+  DO: {
+    // Dominican Republic \u2014 Junta Central Electoral (JCE) issues the c\u00e9dula
+    // and driver's licence numbering; INTRANT issues the licence itself.
+    // Field-label wording below is derived from public knowledge of the
+    // document layout, not a verified specimen \u2014 same basis as the HT
+    // entry above. Correct as real (redacted/synthetic) samples surface.
+    country: 'DO',
+    document_types: [
+      {
+        type: 'national_id', // C\u00e9dula de Identidad y Electoral (JCE)
+        // JCE c\u00e9dula number: 000-0000000-0 (11 digits, 2 hyphens). Stable
+        // and public \u2014 it doubles as the tax/RNC cross-reference number.
+        id_number_regex: /^\d{3}-\d{7}-\d{1}$/,
+        field_labels: {
+          name: [/nombres?/i, /apellidos?/i, /name/i],
+          date_of_birth: [/fecha\s*de\s*nacimiento/i, /nacimiento/i, /date\s*of\s*birth/i],
+          // Unverified: public sources disagree on whether the current
+          // c\u00e9dula design prints an expiration date. Included defensively
+          // \u2014 harmless if it never matches.
+          expiry_date: [/fecha\s*de\s*expiraci\u00f3n/i, /v\u00e1lida?\s*hasta/i, /expiry/i],
+          id_number: [/c\u00e9dula/i, /no\.?\s*(?:de\s*)?identificaci\u00f3n/i, /id\s*no/i],
+          nationality: [/nacionalidad/i, /nationality/i],
+          address: [/lugar\s*de\s*nacimiento/i, /domicilio/i, /direcci\u00f3n/i, /address/i],
+          issuing_authority: [/junta\s*central\s*electoral/i, /\bjce\b/i, /authority/i],
+        },
+        date_format: 'DMY',
+        has_mrz: false,
+      },
+      {
+        type: 'passport',
+        // ICAO passport number: 1-2 letters + 6-7 digits, consistent with
+        // other passport entries here. The MRZ (parsed generically
+        // elsewhere) is authoritative \u2014 this is a fallback/cross-check.
+        id_number_regex: /^[A-Z]{1,2}\d{6,7}$/i,
+        field_labels: {
+          name: [/nombres?/i, /apellidos?/i, /name/i],
+          date_of_birth: [/fecha\s*de\s*nacimiento/i, /date\s*of\s*birth/i],
+          expiry_date: [/fecha\s*de\s*expiraci\u00f3n/i, /expiry/i],
+          id_number: [/pasaporte\s*n[o\u00ba\u00b0]/i, /passport\s*no/i, /id\s*no/i],
+          nationality: [/nacionalidad/i, /dominicana/i, /nationality/i],
+          address: [/direcci\u00f3n/i, /address/i],
+          issuing_authority: [/ministerio\s*de\s*relaciones\s*exteriores/i, /authority/i],
+        },
+        date_format: 'DMY',
+        has_mrz: true,
+      },
+      {
+        type: 'drivers_license', // INTRANT
+        // INTRANT licences are tied to the holder's c\u00e9dula number, so they
+        // share its 000-0000000-0 shape.
+        id_number_regex: /^\d{3}-\d{7}-\d{1}$/,
+        field_labels: {
+          name: [/nombres?/i, /apellidos?/i, /name/i],
+          date_of_birth: [/fecha\s*de\s*nacimiento/i, /date\s*of\s*birth/i],
+          expiry_date: [/fecha\s*de\s*vencimiento/i, /vence/i, /expiry/i],
+          id_number: [/licencia/i, /no\.?\s*de\s*licencia/i, /id\s*no/i],
+          nationality: [/nacionalidad/i, /nationality/i],
+          address: [/direcci\u00f3n/i, /address/i],
+          issuing_authority: [/intrant/i, /authority/i],
+        },
+        date_format: 'DMY',
+        has_mrz: false,
+      },
+    ],
+  },
+
   // -- Asia-Pacific ----------------------------------------------
 
   JP: {
@@ -686,6 +752,8 @@ export const INTERNATIONAL_HEADER_NOISE = new Set([
   // Spanish
   'documento nacional de identidad', 'permiso de conducir',
   'instituto nacional electoral',
+  // Dominican Republic
+  'república dominicana', 'cédula de identidad y electoral',
   // Portuguese
   'carteira nacional de habilita\u00e7\u00e3o', 'carta de condu\u00e7\u00e3o',
   // Dutch
