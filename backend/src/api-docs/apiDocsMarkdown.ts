@@ -62,11 +62,15 @@ Content-Type: application/json
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | user_id | UUID string | Yes | Your unique identifier for the user |
+| document_type | string | No | \`'passport'\` \\| \`'drivers_license'\` \\| \`'national_id'\` \\| \`'auto'\`. Defaults to \`'auto'\` |
+| issuing_country | string | No | ISO 3166-1 alpha-2 country code (e.g. \`'US'\`, \`'DO'\`). Stored on the session and used as the fallback country for every later step (front/back document) that doesn't repeat it explicitly |
 | sandbox | boolean | No | Use sandbox mode (default: false) |
 | addons | object | No | Optional add-on features |
 | addons.aml_screening | boolean | No | Override AML screening (default: auto-enabled when \`AML_PROVIDER\` is configured; set \`false\` to disable for this session) |
 | verification_mode | string | No | Flow preset: \`'full'\` (default), \`'document_only'\`, \`'identity'\`, or \`'age_only'\`. See Verification Flows below |
 | age_threshold | integer | No | Minimum age required (1-99, default: 18). Only used when \`verification_mode\` is \`'age_only'\` |
+| force_manual_review | boolean | No | Force every gate in this session to soft-fail instead of hard-rejecting — the pipeline always runs to completion and lands in \`manual_review\` rather than \`failed\`, even on a fully clean pass. This is a blunt, session-wide override; for automatic per-condition control, use a Compliance Rule action instead (see Compliance Rules below) |
+| max_gate_retries | integer | No | 0-5 (default: 0). Number of times a retryable gate failure may be retried in place before falling through to a hard reject |
 
 **Response (201):**
 
@@ -246,7 +250,7 @@ Content-Type: multipart/form-data
 |-------|------|----------|-------------|
 | document_type | string | No | 'passport' \\| 'drivers_license' \\| 'national_id' \\| 'other' \\| 'auto'. Defaults to 'auto' (auto-detect from OCR text). If provided explicitly, the given type is used with confidence 1.0 |
 | document | File | Yes | JPEG, PNG, WebP, or PDF. Max 10 MB |
-| country_code | string | No | ISO 3166-1 alpha-2 country code (e.g. 'US', 'GB'). Improves OCR accuracy for international documents |
+| issuing_country | string | No | ISO 3166-1 alpha-2 country code (e.g. 'US', 'DO'). Improves OCR accuracy for international documents. Optional here — if omitted, falls back to the \`issuing_country\` set at \`/initialize\` |
 
 **Response (201):** Includes \`ocr_data\` with extracted fields (name, DOB, document number, expiry, address) and \`confidence_scores\` per field. Also includes \`detected_document_type\` (the auto-detected or user-specified document type), \`classification_confidence\` (0.50–1.0 indicating detection reliability), and \`requires_back\` (boolean — \`false\` when passport detected or mode doesn't require back document). Auto-classification signals: MRZ patterns (TD1/TD2/TD3), keyword matching (PASSPORT, DRIVER LICENSE, NATIONAL ID), and field-pattern heuristics (AAMVA codes, DL tokens).
 
@@ -261,6 +265,7 @@ Content-Type: multipart/form-data
 |-------|------|----------|-------------|
 | document_type | string | Yes | Must match Step 2 document_type |
 | document | File | Yes | JPEG, PNG, or WebP. Max 10 MB |
+| issuing_country | string | No | Same as Step 2 — optional per-request override; falls back to the \`issuing_country\` set at \`/initialize\` if omitted |
 
 **Response (201):** Includes \`barcode_data\` and \`cross_validation_results\` with verdict (PASS/REVIEW), score, and failures.
 
