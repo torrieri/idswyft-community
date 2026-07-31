@@ -594,7 +594,7 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
           name: [/nombres?/i, /apellidos?/i, /name/i],
           date_of_birth: [/fecha\s*de\s*nacimiento/i, /date\s*of\s*birth/i],
           expiry_date: [/fecha\s*de\s*expiraci\u00f3n/i, /expiry/i],
-          id_number: [/pasaporte\s*n[oº°]/i, /passport\s*no/i, /id\s*no/i],
+          id_number: [/pasaporte\s*n[o\u00ba\u00b0]/i, /passport\s*no/i, /id\s*no/i],
           nationality: [/nacionalidad/i, /guatemalteca/i, /nationality/i],
           address: [/direcci\u00f3n/i, /address/i],
           issuing_authority: [/ministerio\s*de\s*relaciones\s*exteriores/i, /authority/i],
