@@ -8,7 +8,20 @@ describe('DO (Dominican Republic) country format', () => {
     const format = getCountryFormat('DO', 'national_id')
     expect(format).not.toBeNull()
     expect(format?.date_format).toBe('DMY')
-    expect(format?.has_mrz).toBe(false)
+    // Verified against a real specimen: the cédula's back carries a TD1 MRZ.
+    expect(format?.has_mrz).toBe(true)
+  })
+
+  it('national_id id_number label accepts unaccented OCR output ("CEDULA", no tilde)', () => {
+    const format = getCountryFormat('DO', 'national_id')
+    expect(format?.field_labels.id_number.some(p => p.test('CEDULA'))).toBe(true)
+    expect(format?.field_labels.id_number.some(p => p.test('CÉDULA'))).toBe(true)
+  })
+
+  it('national_id expiry_date label accepts unaccented OCR output ("EXPIRACION", no tilde)', () => {
+    const format = getCountryFormat('DO', 'national_id')
+    expect(format?.field_labels.expiry_date.some(p => p.test('FECHA DE EXPIRACION'))).toBe(true)
+    expect(format?.field_labels.expiry_date.some(p => p.test('FECHA DE EXPIRACIÓN'))).toBe(true)
   })
 
   it('returns a passport format with MRZ', () => {

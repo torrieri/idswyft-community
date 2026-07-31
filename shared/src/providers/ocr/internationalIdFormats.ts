@@ -509,17 +509,26 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
         field_labels: {
           name: [/nombres?/i, /apellidos?/i, /name/i],
           date_of_birth: [/fecha\s*de\s*nacimiento/i, /nacimiento/i, /date\s*of\s*birth/i],
-          // Unverified: public sources disagree on whether the current
-          // cédula design prints an expiration date. Included defensively
-          // — harmless if it never matches.
-          expiry_date: [/fecha\s*de\s*expiraci\u00f3n/i, /v\u00e1lida?\s*hasta/i, /expiry/i],
-          id_number: [/c\u00e9dula/i, /no\.?\s*(?:de\s*)?identificaci\u00f3n/i, /id\s*no/i],
+          // Verified against a real specimen (2026-07-31): the card DOES
+          // print an expiration date. OCR (PaddleOCR and Tesseract both)
+          // inconsistently drops accents on this card's printed text (e.g.
+          // "CEDULA"/"EXPIRACION" with no tilde), so labels below use
+          // accent-tolerant character classes rather than requiring the
+          // accented form.
+          expiry_date: [/fecha\s*de\s*expiraci[o\u00f3]n/i, /v[a\u00e1]lida?\s*hasta/i, /expiry/i],
+          id_number: [/c[e\u00e9]dula/i, /no\.?\s*(?:de\s*)?identificaci[o\u00f3]n/i, /id\s*no/i],
           nationality: [/nacionalidad/i, /nationality/i],
-          address: [/lugar\s*de\s*nacimiento/i, /domicilio/i, /direcci\u00f3n/i, /address/i],
+          address: [/lugar\s*de\s*nacimiento/i, /domicilio/i, /direcci[o\u00f3]n/i, /address/i],
           issuing_authority: [/junta\s*central\s*electoral/i, /\bjce\b/i, /authority/i],
         },
         date_format: 'DMY',
-        has_mrz: false,
+        // Verified against a real specimen (2026-07-31): the back carries a
+        // standard ICAO TD1 MRZ (3 lines, "IDDOM" document/country prefix).
+        // Known gap, also confirmed against the real specimen: this card
+        // prints the holder's name unlabeled (no "NOMBRES"/"APELLIDOS" label
+        // precedes it), so label-based name extraction cannot find it — not
+        // yet fixed; would need a positional (non-label) extraction strategy.
+        has_mrz: true,
       },
       {
         type: 'passport',
@@ -530,10 +539,10 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
         field_labels: {
           name: [/nombres?/i, /apellidos?/i, /name/i],
           date_of_birth: [/fecha\s*de\s*nacimiento/i, /date\s*of\s*birth/i],
-          expiry_date: [/fecha\s*de\s*expiraci\u00f3n/i, /expiry/i],
+          expiry_date: [/fecha\s*de\s*expiraci[o\u00f3]n/i, /expiry/i],
           id_number: [/pasaporte\s*n[o\u00ba\u00b0]/i, /passport\s*no/i, /id\s*no/i],
           nationality: [/nacionalidad/i, /dominicana/i, /nationality/i],
-          address: [/direcci\u00f3n/i, /address/i],
+          address: [/direcci[o\u00f3]n/i, /address/i],
           issuing_authority: [/ministerio\s*de\s*relaciones\s*exteriores/i, /authority/i],
         },
         date_format: 'DMY',
@@ -550,7 +559,7 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
           expiry_date: [/fecha\s*de\s*vencimiento/i, /vence/i, /expiry/i],
           id_number: [/licencia/i, /no\.?\s*de\s*licencia/i, /id\s*no/i],
           nationality: [/nacionalidad/i, /nationality/i],
-          address: [/direcci\u00f3n/i, /address/i],
+          address: [/direcci[o\u00f3]n/i, /address/i],
           issuing_authority: [/intrant/i, /authority/i],
         },
         date_format: 'DMY',
@@ -577,9 +586,9 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
           date_of_birth: [/fecha\s*de\s*nacimiento/i, /date\s*of\s*birth/i],
           // DPI has a well-established 10-year printed validity.
           expiry_date: [/fecha\s*de\s*vencimiento/i, /vence/i, /expiry/i],
-          id_number: [/\bcui\b/i, /c\u00f3digo\s*\u00fanico\s*de\s*identificaci\u00f3n/i, /id\s*no/i],
+          id_number: [/\bcui\b/i, /c[o\u00f3]digo\s*[u\u00fa]nico\s*de\s*identificaci[o\u00f3]n/i, /id\s*no/i],
           nationality: [/nacionalidad/i, /guatemalteca/i, /nationality/i],
-          address: [/domicilio/i, /direcci\u00f3n/i, /address/i],
+          address: [/domicilio/i, /direcci[o\u00f3]n/i, /address/i],
           issuing_authority: [/renap/i, /registro\s*nacional\s*de\s*las\s*personas/i, /authority/i],
         },
         date_format: 'DMY',
@@ -593,10 +602,10 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
         field_labels: {
           name: [/nombres?/i, /apellidos?/i, /name/i],
           date_of_birth: [/fecha\s*de\s*nacimiento/i, /date\s*of\s*birth/i],
-          expiry_date: [/fecha\s*de\s*expiraci\u00f3n/i, /expiry/i],
+          expiry_date: [/fecha\s*de\s*expiraci[o\u00f3]n/i, /expiry/i],
           id_number: [/pasaporte\s*n[o\u00ba\u00b0]/i, /passport\s*no/i, /id\s*no/i],
           nationality: [/nacionalidad/i, /guatemalteca/i, /nationality/i],
-          address: [/direcci\u00f3n/i, /address/i],
+          address: [/direcci[o\u00f3]n/i, /address/i],
           issuing_authority: [/ministerio\s*de\s*relaciones\s*exteriores/i, /authority/i],
         },
         date_format: 'DMY',
@@ -613,7 +622,7 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
           expiry_date: [/fecha\s*de\s*vencimiento/i, /vence/i, /expiry/i],
           id_number: [/licencia/i, /no\.?\s*de\s*licencia/i, /id\s*no/i],
           nationality: [/nacionalidad/i, /nationality/i],
-          address: [/direcci\u00f3n/i, /address/i],
+          address: [/direcci[o\u00f3]n/i, /address/i],
           issuing_authority: [/authority/i],
         },
         date_format: 'DMY',
