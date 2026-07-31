@@ -753,7 +753,7 @@ export const INTERNATIONAL_HEADER_NOISE = new Set([
   'documento nacional de identidad', 'permiso de conducir',
   'instituto nacional electoral',
   // Dominican Republic
-  'república dominicana', 'cédula de identidad y electoral',
+  'rep\u00fablica dominicana', 'c\u00e9dula de identidad y electoral',
   // Portuguese
   'carteira nacional de habilita\u00e7\u00e3o', 'carta de condu\u00e7\u00e3o',
   // Dutch
