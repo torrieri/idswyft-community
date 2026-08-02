@@ -351,6 +351,27 @@ describe('BaseExtractor.extractDate', () => {
   it('returns null for empty string', () => {
     expect(tx.extractDatePublic('')).toBeNull();
   });
+
+  describe('month-name dates with OCR-glued (zero-space) tokens', () => {
+    // Real Guatemalan DPI OCR output: "21OCT2005" with no spaces at all
+    // between day/month/year. parseMonthNameDate previously required \s+
+    // (one or more) around the month token, so this never parsed.
+    it('parses "21OCT2005" (day-month-year, no spaces)', () => {
+      expect(tx.extractDatePublic('21OCT2005')).toBe('2005-10-21');
+    });
+
+    it('parses "01MAR2034" (day-month-year, no spaces)', () => {
+      expect(tx.extractDatePublic('01MAR2034')).toBe('2034-03-01');
+    });
+
+    it('parses "OCT21,2005" (month-day-year, no spaces)', () => {
+      expect(tx.extractDatePublic('OCT21,2005')).toBe('2005-10-21');
+    });
+
+    it('still parses the normally-spaced form', () => {
+      expect(tx.extractDatePublic('21 OCT 2005')).toBe('2005-10-21');
+    });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -409,6 +430,56 @@ describe('BaseExtractor.isLabelOrNoise', () => {
 
     it('flags "surname"', () => {
       expect(tx.isLabel('surname')).toBe(true);
+    });
+  });
+
+  describe('Spanish labels', () => {
+    it('flags "PAIS DE NAC." (the real Guatemalan DPI column-header bug — a neighboring label bleeding into the nationality value)', () => {
+      expect(tx.isLabel('PAIS DE NAC.')).toBe(true);
+    });
+
+    it('flags "pais de nacimiento"', () => {
+      expect(tx.isLabel('pais de nacimiento')).toBe(true);
+    });
+
+    it('flags "fecha de nacimiento"', () => {
+      expect(tx.isLabel('fecha de nacimiento')).toBe(true);
+    });
+
+    it('flags "fecha de vencimiento"', () => {
+      expect(tx.isLabel('fecha de vencimiento')).toBe(true);
+    });
+
+    it('flags "fecha de expiración"', () => {
+      expect(tx.isLabel('fecha de expiración')).toBe(true);
+    });
+
+    it('flags "lugar de nacimiento"', () => {
+      expect(tx.isLabel('lugar de nacimiento')).toBe(true);
+    });
+
+    it('flags "código único de identificación"', () => {
+      expect(tx.isLabel('código único de identificación')).toBe(true);
+    });
+
+    it('flags "estado civil"', () => {
+      expect(tx.isLabel('estado civil')).toBe(true);
+    });
+
+    it('flags "domicilio"', () => {
+      expect(tx.isLabel('domicilio')).toBe(true);
+    });
+
+    it('flags "vecindad"', () => {
+      expect(tx.isLabel('vecindad')).toBe(true);
+    });
+
+    it('flags "nacionalidad"', () => {
+      expect(tx.isLabel('nacionalidad')).toBe(true);
+    });
+
+    it('does not flag a real Spanish name that happens to contain none of these words', () => {
+      expect(tx.isLabel('GUERRA BARRIOS')).toBe(false);
     });
   });
 

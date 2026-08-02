@@ -8,7 +8,8 @@ describe('GT (Guatemala) country format', () => {
     const format = getCountryFormat('GT', 'national_id')
     expect(format).not.toBeNull()
     expect(format?.date_format).toBe('DMY')
-    expect(format?.has_mrz).toBe(false)
+    // Verified against a real specimen: the DPI's back carries a TD1-style MRZ.
+    expect(format?.has_mrz).toBe(true)
   })
 
   it('returns a passport format with MRZ', () => {

@@ -18,6 +18,10 @@ export abstract class BaseExtractor {
     if (/\b(surname|given\s*name|first\s*name|last\s*name|family\s*name|date\s*of\s*birth|nationality|passport|card\s*no|document|expiry|number)\b/i.test(v)) return true;
     if (/\b(date\s*de\s*naissance|lieu\s*de\s*naissance|date\s*d'?\s*expiration|date\s*d'?\s*[eé]mission|num[eé]ro\s*de\s*carte|nationalit[eé]|pr[eé]nom)(?![A-Za-z])/i.test(v)) return true;
     if (/\b(kat\s*la\s*f[eè]t|kat\s*la\s*fini|dat\s*(?:ou\s*)?f[eè]t|kote\s*(?:ou\s*)?f[eè]t|nimewo\s*kat|nimewo\s*idantifikasyon|nasyonalite|siyati\s*m[eè]t)\b/i.test(v)) return true;
+    // Spanish label fragments — a neighboring column label (e.g. "PAÍS DE
+    // NAC.") bleeding into an adjacent field's value is a real, observed
+    // failure mode on Latin American national IDs (Guatemalan DPI).
+    if (/\b(pa[ií]s\s*de\s*nac(?:imiento)?|fecha\s*de\s*nacimiento|fecha\s*de\s*vencimiento|fecha\s*de\s*expiraci[oó]n|lugar\s*de\s*nacimiento|c[oó]digo\s*[uú]nico\s*de\s*identificaci[oó]n|estado\s*civil|domicilio|vecindad|nacionalidad)(?![A-Za-z])/i.test(v)) return true;
     // Passport/card field markers (e.g., "***" or "* text *")
     if (/^\*+/.test(v)) return true;
     return false;

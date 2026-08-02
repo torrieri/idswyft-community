@@ -42,8 +42,8 @@ export class InternationalExtractor extends BaseExtractor {
       let surname = '';
       let givenName = '';
       let nameConf = 0;
-      const surnamePatterns = labels.name.filter(p => /surname|family|last|appell|cognom|nachnam|achternaam|^mbiemri/i.test(p.source));
-      const givenPatterns = labels.name.filter(p => /given|first|prénom|vornam|voornaam|^emri$/i.test(p.source));
+      const surnamePatterns = labels.name.filter(p => /surname|family|last|apell|cognom|nachnam|achternaam|^mbiemri/i.test(p.source));
+      const givenPatterns = labels.name.filter(p => /given|first|pr[eé]nom|nombre|vornam|voornaam|^emri$/i.test(p.source));
 
       if (surnamePatterns.length > 0) {
         this.findField(flatLines, surnamePatterns, (value, conf) => {
@@ -116,6 +116,22 @@ export class InternationalExtractor extends BaseExtractor {
       }
       return false;
     });
+
+    // Last-resort fallback: scan the full OCR text for a substring matching
+    // this country's id_number_regex — defined per-country in the registry,
+    // but otherwise unused during extraction. Helps when the number is glued
+    // to adjacent OCR noise (e.g. a "CUI-" marker immediately followed by a
+    // name) that defeats the label-adjacency search above, since the number
+    // can appear BEFORE the matched label token, which findField never looks.
+    if (!ocrData.document_number) {
+      const unanchored = new RegExp(format.id_number_regex.source.replace(/^\^/, '').replace(/\$$/, ''), 'i');
+      const fullText = flatLines.map(l => l.text).join(' ');
+      const idMatch = fullText.match(unanchored);
+      if (idMatch) {
+        ocrData.document_number = idMatch[0].trim();
+        ocrData.confidence_scores!.document_number = 0.7;
+      }
+    }
 
     // Extract expiry date. Pass date_format hint so ambiguous dates like
     // "06-02-2028" are interpreted correctly (DMY → 2028-02-06). The 2-line

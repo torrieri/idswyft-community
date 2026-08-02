@@ -5,16 +5,29 @@ const MONTH_NAMES: Record<string, string> = {
   JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12',
 };
 
-/** Parse a month-name date like "1 JAN 1981" or "12 August 1990" → YYYY-MM-DD */
+/**
+ * Parse a month-name date like "1 JAN 1981" or "12 August 1990" → YYYY-MM-DD.
+ *
+ * Whitespace around the month token is optional (`\s*`, not `\s+`): real OCR
+ * output routinely glues tokens together with zero spaces (e.g. a Guatemalan
+ * DPI printing "21OCT2005"), and requiring at least one space silently
+ * dropped every date on documents affected by that artifact.
+ */
 export function parseMonthNameDate(text: string): string | null {
-  const m = text.match(/(\d{1,2})\s+(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\w*\s+(\d{4})/i);
+  // [A-Za-z]* (not \w*) after the 3-letter month code: \w includes digits, and
+  // when there's no separating space (the glued-token case this tolerance
+  // exists for), a digit-eating \w* can greedily consume part of the
+  // adjacent day/year number before backtracking — for a fixed 4-digit year
+  // that self-corrects, but for the 1-2-digit day below it can settle on a
+  // wrong-but-valid shorter match instead of backtracking all the way.
+  const m = text.match(/(\d{1,2})\s*(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Za-z]*\s*(\d{4})/i);
   if (m) {
     const day = m[1].padStart(2, '0');
     const month = MONTH_NAMES[m[2].slice(0, 3).toUpperCase()];
     if (month) return `${m[3]}-${month}-${day}`;
   }
   // Also handle "JAN 1 1981" (month-first)
-  const m2 = text.match(/(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\w*\s+(\d{1,2}),?\s+(\d{4})/i);
+  const m2 = text.match(/(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Za-z]*\s*(\d{1,2}),?\s*(\d{4})/i);
   if (m2) {
     const day = m2[2].padStart(2, '0');
     const month = MONTH_NAMES[m2[1].slice(0, 3).toUpperCase()];

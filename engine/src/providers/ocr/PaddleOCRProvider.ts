@@ -28,16 +28,29 @@ const MONTH_NAMES: Record<string, string> = {
   JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12',
 };
 
-/** Parse a month-name date like "1 JAN 1981" or "12 August 1990" → YYYY-MM-DD */
+/**
+ * Parse a month-name date like "1 JAN 1981" or "12 August 1990" → YYYY-MM-DD.
+ *
+ * Whitespace around the month token is optional (`\s*`, not `\s+`): real OCR
+ * output routinely glues tokens together with zero spaces (e.g. a Guatemalan
+ * DPI printing "21OCT2005"), and requiring at least one space silently
+ * dropped every date on documents affected by that artifact.
+ *
+ * [A-Za-z]* (not \w*) after the 3-letter month code: \w includes digits, and
+ * when there's no separating space a digit-eating \w* can greedily consume
+ * part of the adjacent day/year number before backtracking — for a fixed
+ * 4-digit year that self-corrects, but for the 1-2-digit day it can settle
+ * on a wrong-but-valid shorter match instead of backtracking all the way.
+ */
 function parseMonthNameDate(text: string): string | null {
-  const m = text.match(/(\d{1,2})\s+(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\w*\s+(\d{4})/i);
+  const m = text.match(/(\d{1,2})\s*(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Za-z]*\s*(\d{4})/i);
   if (m) {
     const day = m[1].padStart(2, '0');
     const month = MONTH_NAMES[m[2].slice(0, 3).toUpperCase()];
     if (month) return `${m[3]}-${month}-${day}`;
   }
   // Also handle "JAN 1 1981" (month-first)
-  const m2 = text.match(/(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\w*\s+(\d{1,2}),?\s+(\d{4})/i);
+  const m2 = text.match(/(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Za-z]*\s*(\d{1,2}),?\s*(\d{4})/i);
   if (m2) {
     const day = m2[2].padStart(2, '0');
     const month = MONTH_NAMES[m2[1].slice(0, 3).toUpperCase()];
@@ -1399,6 +1412,10 @@ export class PaddleOCRProvider implements OCRProvider {
     if (/\b(surname|given\s*name|first\s*name|last\s*name|family\s*name|date\s*of\s*birth|nationality|passport|card\s*no|document|expiry|number)\b/i.test(v)) return true;
     if (/\b(date\s*de\s*naissance|lieu\s*de\s*naissance|date\s*d'?\s*expiration|date\s*d'?\s*[eé]mission|num[eé]ro\s*de\s*carte|nationalit[eé]|pr[eé]nom)(?![A-Za-z])/i.test(v)) return true;
     if (/\b(kat\s*la\s*f[eè]t|kat\s*la\s*fini|dat\s*(?:ou\s*)?f[eè]t|kote\s*(?:ou\s*)?f[eè]t|nimewo\s*kat|nimewo\s*idantifikasyon|nasyonalite|siyati\s*m[eè]t)\b/i.test(v)) return true;
+    // Spanish label fragments — a neighboring column label (e.g. "PAÍS DE
+    // NAC.") bleeding into an adjacent field's value is a real, observed
+    // failure mode on Latin American national IDs (Guatemalan DPI).
+    if (/\b(pa[ií]s\s*de\s*nac(?:imiento)?|fecha\s*de\s*nacimiento|fecha\s*de\s*vencimiento|fecha\s*de\s*expiraci[oó]n|lugar\s*de\s*nacimiento|c[oó]digo\s*[uú]nico\s*de\s*identificaci[oó]n|estado\s*civil|domicilio|vecindad|nacionalidad)(?![A-Za-z])/i.test(v)) return true;
     // Passport/card field markers (e.g., "***" or "* text *")
     if (/^\*+/.test(v)) return true;
     return false;
@@ -1642,8 +1659,8 @@ export class PaddleOCRProvider implements OCRProvider {
       let nameConf = 0;
       // Filter patterns by their regex source to split surname vs given
       // Use word-boundary-aware matching to avoid "mbiemri" matching the "emri" given filter
-      const surnamePatterns = labels.name.filter(p => /surname|family|last|appell|cognom|nachnam|achternaam|^mbiemri/i.test(p.source));
-      const givenPatterns = labels.name.filter(p => /given|first|prénom|vornam|voornaam|^emri$/i.test(p.source));
+      const surnamePatterns = labels.name.filter(p => /surname|family|last|apell|cognom|nachnam|achternaam|^mbiemri/i.test(p.source));
+      const givenPatterns = labels.name.filter(p => /given|first|pr[eé]nom|nombre|vornam|voornaam|^emri$/i.test(p.source));
 
       if (surnamePatterns.length > 0) {
         this.findField(flatLines, surnamePatterns, (value, conf) => {
@@ -1717,6 +1734,22 @@ export class PaddleOCRProvider implements OCRProvider {
       }
       return false;
     });
+
+    // Last-resort fallback: scan the full OCR text for a substring matching
+    // this country's id_number_regex — defined per-country in the registry,
+    // but otherwise unused during extraction. Helps when the number is glued
+    // to adjacent OCR noise (e.g. a "CUI-" marker immediately followed by a
+    // name) that defeats the label-adjacency search above, since the number
+    // can appear BEFORE the matched label token, which findField never looks.
+    if (!ocrData.document_number) {
+      const unanchored = new RegExp(format.id_number_regex.source.replace(/^\^/, '').replace(/\$$/, ''), 'i');
+      const fullText = flatLines.map(l => l.text).join(' ');
+      const idMatch = fullText.match(unanchored);
+      if (idMatch) {
+        ocrData.document_number = idMatch[0].trim();
+        ocrData.confidence_scores!.document_number = 0.7;
+      }
+    }
 
     // Extract expiry date. Pass date_format hint so ambiguous dates like
     // "06-02-2028" are interpreted correctly (DMY → 2028-02-06). The 2-line

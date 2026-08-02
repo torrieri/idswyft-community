@@ -580,6 +580,14 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
         type: 'national_id', // DPI (Documento Personal de Identificación), RENAP
         // 13-digit CUI, commonly printed grouped as "XXXX XXXXX XXXX";
         // spaces are optional so both grouped and bare-digit OCR reads match.
+        //
+        // Verified against a real specimen (2026-08-02): the card's back
+        // carries a barcode/OCR-readable TD1-style MRZ ("IDGTM" document/
+        // country prefix) — has_mrz is true, not the originally-assumed
+        // false. Expiry ("FECHA DE VENCIMIENTO") is printed on the back,
+        // not the front, so front-extraction's expiry_date label below
+        // will legitimately never match — mirrors the DO entry's
+        // front/back field-location split.
         id_number_regex: /^\d{4}\s?\d{5}\s?\d{4}$/,
         field_labels: {
           name: [/nombres?/i, /apellidos?/i, /name/i],
@@ -592,7 +600,7 @@ export const INTERNATIONAL_ID_FORMATS: Record<string, CountryIdFormat> = {
           issuing_authority: [/renap/i, /registro\s*nacional\s*de\s*las\s*personas/i, /authority/i],
         },
         date_format: 'DMY',
-        has_mrz: false,
+        has_mrz: true,
       },
       {
         type: 'passport',
