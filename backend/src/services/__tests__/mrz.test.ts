@@ -73,6 +73,39 @@ describe('MRZ Service', () => {
       expect(lines).not.toBeNull();
       expect(lines).toHaveLength(2);
     });
+
+    describe('length tolerance for OCR-degraded MRZ lines', () => {
+      // Real Guatemalan DPI back-of-card OCR: two of the three TD1 lines came
+      // out a few characters short (27 and 29, not 30) because OCR dropped
+      // some of the trailing "<" filler run. Previously this meant the whole
+      // MRZ block was silently discarded even though two of its three lines
+      // were genuinely readable.
+      it('accepts a TD1 line missing a few trailing filler chars (pads back to 30)', () => {
+        const shortLine1 = TD1_LINE1.slice(0, 27); // 30 -> 27, real observed shortfall
+        const shortLine2 = TD1_LINE2.slice(0, 29); // 30 -> 29, real observed shortfall
+        const text = [shortLine1, shortLine2, TD1_LINE3].join('\n');
+
+        const lines = detectMRZInText(text);
+        expect(lines).not.toBeNull();
+        expect(lines).toHaveLength(3);
+        expect(lines!.every(l => l.length === 30)).toBe(true);
+        // Padded with trailing filler, not truncated/altered content
+        expect(lines![0].startsWith(shortLine1)).toBe(true);
+        expect(lines![1].startsWith(shortLine2)).toBe(true);
+      });
+
+      it('rejects a line far too short to plausibly be degraded MRZ (below tolerance)', () => {
+        const tooShort = TD1_LINE1.slice(0, 20); // 10 chars short — outside tolerance
+        const text = [tooShort, TD1_LINE2, TD1_LINE3].join('\n');
+        // Only 2 of 3 lines remain valid candidates — insufficient for TD1
+        expect(detectMRZInText(text)).toBeNull();
+      });
+
+      it('still requires all three TD1 lines even when two are pristine and one is missing entirely', () => {
+        const text = [TD1_LINE1, TD1_LINE2].join('\n');
+        expect(detectMRZInText(text)).toBeNull();
+      });
+    });
   });
 
   // ─── parseMRZLines ─────────────────────────────────────

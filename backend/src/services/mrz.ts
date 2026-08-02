@@ -31,40 +31,61 @@ export interface MRZParseResult {
   raw_lines: string[];
 }
 
-// MRZ line length → expected format
-const MRZ_LINE_LENGTHS = new Set([30, 36, 44]);
+// MRZ line length → expected format (TD1, TD2, TD3)
+const MRZ_TARGET_LENGTHS = [30, 36, 44];
+
+// A real but OCR-degraded MRZ line is far more often a few characters SHORT
+// (the trailing "<" filler run is easy to under-read/drop) than it is long,
+// so the tolerance windows below are asymmetric. Kept tight enough that the
+// three target lengths' windows never overlap (30±[4,1] → [26,31],
+// 36±[4,1] → [32,37], 44±[4,1] → [40,45]) — overlapping windows would make a
+// borderline-length line ambiguous between two formats.
+const SHORT_TOLERANCE = 4;
+const LONG_TOLERANCE = 1;
+const MIN_CANDIDATE_LENGTH = Math.min(...MRZ_TARGET_LENGTHS) - SHORT_TOLERANCE;
+
+/** Which MRZ target length (if any) a candidate's length falls within tolerance of. */
+function matchTargetLength(len: number): number | null {
+  for (const target of MRZ_TARGET_LENGTHS) {
+    if (len >= target - SHORT_TOLERANCE && len <= target + LONG_TOLERANCE) return target;
+  }
+  return null;
+}
 
 /**
  * Detect MRZ-like lines in raw OCR text.
  * MRZ lines consist of uppercase letters, digits, and `<` filler characters.
- * Returns the detected lines grouped by line length, or null if none found.
+ * Lines within a small length tolerance of a target format are normalized —
+ * padded with trailing `<` if short, truncated from the end if long — before
+ * being grouped. Returns the detected lines (each exactly at its matched
+ * target length), or null if none found.
  */
 export function detectMRZInText(rawText: string): string[] | null {
   if (!rawText) return null;
 
   const lines = rawText.split('\n').map(l => l.trim());
-  const mrzCandidates: string[] = [];
+  // Group by matched target length (30/36/44), not raw length.
+  const byTarget = new Map<number, string[]>();
 
   for (const line of lines) {
     // MRZ lines: uppercase letters, digits, and < filler only
     const cleaned = line.replace(/\s/g, '');
-    if (cleaned.length >= 30 && /^[A-Z0-9<]+$/.test(cleaned) && MRZ_LINE_LENGTHS.has(cleaned.length)) {
-      mrzCandidates.push(cleaned);
-    }
-  }
+    if (cleaned.length < MIN_CANDIDATE_LENGTH || !/^[A-Z0-9<]+$/.test(cleaned)) continue;
 
-  if (mrzCandidates.length < 2) return null;
+    const target = matchTargetLength(cleaned.length);
+    if (target === null) continue;
 
-  // Group by line length to find consistent MRZ blocks
-  const byLength = new Map<number, string[]>();
-  for (const line of mrzCandidates) {
-    const len = line.length;
-    if (!byLength.has(len)) byLength.set(len, []);
-    byLength.get(len)!.push(line);
+    const normalized =
+      cleaned.length === target ? cleaned :
+      cleaned.length < target ? cleaned.padEnd(target, '<') :
+      cleaned.slice(0, target);
+
+    if (!byTarget.has(target)) byTarget.set(target, []);
+    byTarget.get(target)!.push(normalized);
   }
 
   // TD1 = 3 lines of 30, TD2 = 2 lines of 36, TD3 = 2 lines of 44
-  for (const [len, group] of byLength) {
+  for (const [len, group] of byTarget) {
     if (len === 30 && group.length >= 3) return group.slice(0, 3);
     if ((len === 36 || len === 44) && group.length >= 2) return group.slice(0, 2);
   }
