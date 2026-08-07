@@ -10,6 +10,7 @@ import MobileVerificationPage from './pages/MobileVerificationPage'
 import { AdminLogin } from './pages/AdminLogin'
 import { VerificationManagement } from './pages/VerificationManagement'
 import { DevelopersList } from './pages/DevelopersList'
+import { ComplianceRules } from './pages/ComplianceRules'
 import { DocsPage } from './pages/DocsPage'
 import { DocsGuides } from './pages/DocsGuides'
 import { DocsSdk } from './pages/DocsSdk'
@@ -56,6 +57,8 @@ function App() {
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin/verifications" element={<VerificationManagement />} />
         <Route path="/admin/developers" element={<DevelopersList />} />
+        <Route path="/admin/compliance" element={<ComplianceRules />} />
+        {/* Keep the catch-all last — routes below it are unreachable. */}
         <Route path="/admin/*" element={<Navigate to="/admin/verifications" replace />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

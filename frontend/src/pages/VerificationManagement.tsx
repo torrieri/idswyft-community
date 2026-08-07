@@ -23,6 +23,7 @@ import {
   PhotoIcon,
   ComputerDesktopIcon,
   UsersIcon,
+  ScaleIcon,
 } from '@heroicons/react/24/outline'
 
 // ─── Types ──────────────────────────────────────────────────
@@ -408,6 +409,17 @@ export function VerificationManagement() {
               >
                 <UsersIcon style={{ width: 14, height: 14 }} />
                 Developers
+              </button>
+            )}
+            {/* Compliance is org-admin only — the API rejects platform-admin cookies by design. */}
+            {userRole === 'admin' && (
+              <button
+                onClick={() => navigate('/admin/compliance')}
+                className="btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', fontSize: 13 }}
+              >
+                <ScaleIcon style={{ width: 14, height: 14 }} />
+                Compliance
               </button>
             )}
             {/* Role badge */}
