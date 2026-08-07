@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { computeLaplacianVariance } from '../utils/camera/computeLaplacianVariance';
 import { idCameraCss } from '../utils/camera/cameraAnimations';
 import { useCameraStream } from '../utils/camera/useCameraStream';
+import { useT, type TranslationKey } from '../i18n';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface IDCameraCaptureProps {
@@ -28,16 +29,17 @@ const FOCUS_COLORS: Record<FocusLevel, string> = {
   sharp:  '#00d4b4',
 };
 
-const GUIDANCE_TEXT: Record<FocusLevel, string> = {
-  blurry: 'Move closer to your ID',
-  medium: 'Hold steady\u2026',
-  sharp:  'Perfect! Capturing\u2026',
+const GUIDANCE_KEYS: Record<FocusLevel, TranslationKey> = {
+  blurry: 'idcam.guidance.blurry',
+  medium: 'idcam.guidance.medium',
+  sharp:  'idcam.guidance.sharp',
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
   variant, onCapture, onClose, onFallback,
 }) => {
+  const t = useT();
   const [state, setState] = useState<CameraState>('starting');
   const [focusLevel, setFocusLevel] = useState<FocusLevel>('blurry');
   const [showFlash, setShowFlash] = useState(false);
@@ -101,7 +103,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
       if (err.name === 'NotAllowedError' || err.name === 'NotFoundError') {
         onFallback();
       } else {
-        setError('Unable to access camera. Please check permissions.');
+        setError(t('idcam.error.noAccess'));
       }
     });
 
@@ -302,7 +304,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
       video.srcObject = stream;
       video.play().then(() => { if (mountedRef.current) setState('streaming'); });
     }).catch(() => {
-      if (mountedRef.current) setError('Could not restart camera.');
+      if (mountedRef.current) setError(t('idcam.error.restartFailed'));
     });
   }, [capturedUrl]);
 
@@ -314,7 +316,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: 32, textAlign: 'center', gap: 16 }}>
           <div style={{ fontSize: 48, opacity: 0.5 }}>!</div>
           <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#e8f4f8', lineHeight: 1.5 }}>{error}</p>
-          <button onClick={onClose} style={outlineBtnStyle}>Go Back</button>
+          <button onClick={onClose} style={outlineBtnStyle}>{t('common.goBack')}</button>
         </div>
       </div>
     );
@@ -322,12 +324,12 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
 
   // ── Render ───────────────────────────────────────────────────────────────
   const focusColor = warmingUp ? '#f59e0b' : FOCUS_COLORS[focusLevel];
-  const positionText = variant === 'back' ? 'Position the barcode side' : 'Position the front of your ID';
+  const positionText = variant === 'back' ? t('idcam.positionBack') : t('idcam.positionFront');
   const guidanceText = state === 'captured'
-    ? 'Photo captured!'
+    ? t('common.photoCaptured')
     : warmingUp
       ? positionText
-      : (focusLevel === 'blurry' ? positionText : GUIDANCE_TEXT[focusLevel]);
+      : (focusLevel === 'blurry' ? positionText : t(GUIDANCE_KEYS[focusLevel]));
 
   return (
     <div style={overlayStyle}>
@@ -355,7 +357,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
       {state === 'captured' && capturedUrl && (
         <img
           src={capturedUrl}
-          alt="Captured ID"
+          alt={t('idcam.capturedAlt')}
           style={{
             position: 'absolute', inset: 0,
             width: '100%', height: '100%',
@@ -384,7 +386,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
         padding: '16px 20px', zIndex: 15,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <button onClick={onClose} style={{
+        <button onClick={onClose} aria-label={t('idcam.closeLabel')} style={{
           width: 40, height: 40, borderRadius: '50%',
           background: 'rgba(0,0,0,0.5)', border: 'none',
           color: '#e8f4f8', fontSize: 20, cursor: 'pointer',
@@ -401,7 +403,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
           padding: '6px 12px', borderRadius: 20,
           backdropFilter: 'blur(4px)',
         }}>
-          {variant === 'front' ? 'Front of ID' : 'Back of ID'}
+          {variant === 'front' ? t('idcam.frontOfId') : t('idcam.backOfId')}
         </span>
 
         <div style={{ width: 40 }} /> {/* Spacer for centering */}
@@ -422,7 +424,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
           textShadow: '0 1px 4px rgba(0,0,0,0.6)',
           animation: state === 'streaming' ? 'focusPulse 2s ease infinite' : 'none',
         }}>
-          {state === 'starting' ? 'Starting camera\u2026' : guidanceText}
+          {state === 'starting' ? t('common.startingCamera') : guidanceText}
         </div>
 
         {/* Focus quality bar (when streaming) */}
@@ -467,10 +469,10 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
         {state === 'captured' && (
           <div style={{ display: 'flex', gap: 12, width: '100%' }}>
             <button onClick={handleRetake} style={outlineBtnStyle}>
-              Retake
+              {t('common.retake')}
             </button>
             <button onClick={handleUse} style={tealBtnStyle}>
-              Use Photo
+              {t('common.usePhoto')}
             </button>
           </div>
         )}

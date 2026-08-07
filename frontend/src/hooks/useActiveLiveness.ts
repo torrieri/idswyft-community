@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import type { TranslationKey } from '../i18n/catalog';
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -47,11 +48,11 @@ export interface UseActiveLivenessOptions {
 export interface UseActiveLivenessReturn {
   phase: LivenessPhase;
   direction: ChallengeDirection;
-  instruction: string;
+  instructionKey: TranslationKey | null;
   progress: number;
   faceDetected: boolean;
   currentYaw: number;
-  error: string | null;
+  errorKey: TranslationKey | null;
   retry: () => void;
 }
 
@@ -69,16 +70,22 @@ function pickRandomDirection(): ChallengeDirection {
   return Math.random() < 0.5 ? 'left' : 'right';
 }
 
-function getInstructionForPhase(phase: LivenessPhase, direction: ChallengeDirection): string {
+/** Returns a translation KEY, not text — the hook has no locale context, so the
+ *  rendering component (ActiveLivenessCapture) resolves it. Returning English
+ *  here would hardcode the instruction bar to one language. */
+function getInstructionKeyForPhase(
+  phase: LivenessPhase,
+  direction: ChallengeDirection,
+): TranslationKey | null {
   switch (phase) {
-    case 'ready': return 'Position your face in the oval';
-    case 'turn': return direction === 'left' ? 'Slowly turn your head left' : 'Slowly turn your head right';
-    case 'return_center': return 'Now look straight ahead';
-    case 'capturing': return 'Hold still — capturing...';
-    case 'completed': return 'Liveness check passed!';
-    case 'failed': return 'Liveness check failed. Tap to retry.';
-    case 'fallback': return 'Camera unavailable. Using standard capture.';
-    default: return '';
+    case 'ready': return 'liveness.phase.ready';
+    case 'turn': return direction === 'left' ? 'liveness.phase.turnLeft' : 'liveness.phase.turnRight';
+    case 'return_center': return 'liveness.phase.returnCenter';
+    case 'capturing': return 'liveness.phase.capturing';
+    case 'completed': return 'liveness.phase.completed';
+    case 'failed': return 'liveness.phase.failed';
+    case 'fallback': return 'liveness.phase.fallback';
+    default: return null;
   }
 }
 
@@ -119,7 +126,7 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
   const [phase, setPhase] = useState<LivenessPhase>('ready');
   const [direction, setDirection] = useState<ChallengeDirection>(pickRandomDirection);
   const [progress, setProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<TranslationKey | null>(null);
 
   const phaseRef = useRef(phase);
   const framesRef = useRef<AnalysisFrame[]>([]);
@@ -212,7 +219,7 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
     const timeoutTimer = setTimeout(() => {
       if (running && phaseRef.current === 'turn') {
         setPhase('failed');
-        setError('Challenge timed out. Please try again.');
+        setErrorKey('liveness.error.timedOut');
       }
     }, challengeTimeoutMs);
 
@@ -274,7 +281,7 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
   const finalizeLiveness = useCallback(() => {
     if (!canvasElement || !videoElement) {
       setPhase('failed');
-      setError('Canvas not available for capture');
+      setErrorKey('liveness.error.noCanvas');
       return;
     }
 
@@ -284,7 +291,7 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
     const ctx = canvasElement.getContext('2d');
     if (!ctx) {
       setPhase('failed');
-      setError('Canvas context not available');
+      setErrorKey('liveness.error.noContext');
       return;
     }
     ctx.drawImage(videoElement, 0, 0);
@@ -293,7 +300,7 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
       (blob) => {
         if (!blob) {
           setPhase('failed');
-          setError('Frame capture failed');
+          setErrorKey('liveness.error.frameFailed');
           return;
         }
 
@@ -324,7 +331,7 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
     challengeStartRef.current = 0;
     returnStartRef.current = 0;
     setDirection(pickRandomDirection());
-    setError(null);
+    setErrorKey(null);
     setProgress(0);
     setPhase('ready');
   }, []);
@@ -340,11 +347,11 @@ export function useActiveLiveness(options: UseActiveLivenessOptions): UseActiveL
   return {
     phase,
     direction,
-    instruction: getInstructionForPhase(phase, direction),
+    instructionKey: getInstructionKeyForPhase(phase, direction),
     progress,
     faceDetected: true,  // No client-side detection — always true when camera is active
     currentYaw: 0,       // No client-side yaw estimation
-    error,
+    errorKey,
     retry,
   };
 }

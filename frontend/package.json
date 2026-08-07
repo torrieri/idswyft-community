@@ -9,6 +9,8 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "generate:narration": "node scripts/generate-narration.mjs",
     "generate:keyboard-fx": "node scripts/generate-keyboard-fx.mjs",
     "generate:all-audio": "node scripts/generate-keyboard-fx.mjs && node scripts/generate-narration.mjs",

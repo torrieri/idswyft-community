@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../config/api';
 import { C } from '../theme';
+import { useT, useLocale } from '../i18n';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { ActiveLivenessCapture } from '../components/liveness/ActiveLivenessCapture';
 import type { LivenessMetadata } from '../hooks/useActiveLiveness';
 import {
@@ -51,6 +53,8 @@ interface VerificationResults {
 }
 
 export const LiveCapturePage: React.FC = () => {
+  const t = useT();
+  const { locale } = useLocale();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -108,7 +112,7 @@ export const LiveCapturePage: React.FC = () => {
   // Load session data
   useEffect(() => {
     if (!token) {
-      setError('Invalid or missing live capture token');
+      setError(t('livepage.error.noToken'));
       return;
     }
 
@@ -117,7 +121,7 @@ export const LiveCapturePage: React.FC = () => {
       expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       liveness_challenge: {
         type: 'blink_twice',
-        instruction: 'Please look directly at the camera and blink twice'
+        instruction: t('livepage.defaultChallenge')
       },
       user_id: 'user-123',
       verification_id: verificationId,
@@ -184,7 +188,7 @@ export const LiveCapturePage: React.FC = () => {
         } else {
           setIsPolling(false);
           if (attempts >= maxAttempts) {
-            setError('Verification is taking longer than expected. Please check results manually.');
+            setError(t('livepage.error.takingLong'));
           }
         }
         
@@ -195,7 +199,7 @@ export const LiveCapturePage: React.FC = () => {
           setTimeout(poll, 5000);
         } else {
           setIsPolling(false);
-          setError('Failed to check verification status. Please try refreshing.');
+          setError(t('livepage.error.statusCheck'));
         }
       }
     };
@@ -290,7 +294,7 @@ export const LiveCapturePage: React.FC = () => {
           } else {
             console.error('🎥 Canvas still not available after retry');
             setCameraState('error');
-            setError('Canvas element not found. Please refresh the page.');
+            setError(t('livepage.error.noCanvas'));
             setLoading(false);
           }
         }, 500);
@@ -308,17 +312,17 @@ export const LiveCapturePage: React.FC = () => {
       console.error('🎥 Camera initialization failed:', error);
       setCameraState('error');
       
-      let errorMessage = 'Camera access failed';
+      let errorMessage = t('livepage.error.accessFailed');
       if (error.name === 'NotAllowedError') {
-        errorMessage = 'Camera permission denied. Please enable camera access.';
+        errorMessage = t('livepage.error.permissionDenied');
       } else if (error.name === 'NotFoundError') {
-        errorMessage = 'No camera found. Please connect a camera.';
+        errorMessage = t('livepage.error.notFound');
       } else if (error.name === 'NotReadableError') {
-        errorMessage = 'Camera is already in use by another application.';
+        errorMessage = t('livepage.error.inUse');
       } else if (error.name === 'SecurityError') {
-        errorMessage = 'Camera access blocked due to security settings.';
+        errorMessage = t('livepage.error.security');
       } else {
-        errorMessage = `Camera error: ${error.message || 'Unknown error'}`;
+        errorMessage = t('livepage.error.generic', { message: error.message || t('livepage.error.unknown') });
       }
       
       setError(errorMessage);
@@ -614,7 +618,7 @@ export const LiveCapturePage: React.FC = () => {
     ctx.fillStyle = faceDetected ? C.green : C.red;
     ctx.font = '12px JetBrains Mono, monospace';
     ctx.textAlign = 'center';
-    const statusText = faceDetected ? 'FACE DETECTED' : 'POSITION FACE IN FRAME';
+    const statusText = faceDetected ? t('livepage.overlay.faceDetected') : t('livepage.overlay.positionFace');
     ctx.fillText(
       statusText,
       centerX,
@@ -626,7 +630,7 @@ export const LiveCapturePage: React.FC = () => {
       ctx.font = '11px JetBrains Mono, monospace';
       ctx.fillStyle = C.green;
       ctx.fillText(
-        `LIVENESS ${Math.round(livenessScore * 100)}%  |  STABILITY ${Math.round(faceStability * 100)}%`,
+        t('livepage.overlay.stats', { liveness: Math.round(livenessScore * 100), stability: Math.round(faceStability * 100) }),
         centerX,
         centerY + radiusY + 40
       );
@@ -667,11 +671,11 @@ export const LiveCapturePage: React.FC = () => {
     // More permissive challenge requirements
     if (challengeState !== 'waiting' || !faceDetected || livenessScore < 0.4 || faceStability < 0.5) {
       if (!faceDetected) {
-        setError('No face detected. Please position your face clearly in the center of the frame.');
+        setError(t('livepage.error.noFaceDetected'));
       } else if (livenessScore < 0.4) {
-        setError('Please ensure good lighting and face clearly visible for liveness detection.');
+        setError(t('livepage.error.poorLighting'));
       } else if (faceStability < 0.5) {
-        setError('Please hold your face steady in the center of the frame.');
+        setError(t('livepage.error.unsteady'));
       }
       return;
     }
@@ -688,7 +692,7 @@ export const LiveCapturePage: React.FC = () => {
           if (faceDetected && livenessScore >= 0.4 && faceStability >= 0.5) {
             performCapture();
           } else {
-            setError('Face detection lost during countdown. Please try again.');
+            setError(t('livepage.error.faceLostCountdown'));
             setChallengeState('waiting');
           }
           return null;
@@ -697,7 +701,7 @@ export const LiveCapturePage: React.FC = () => {
         // Continuously validate face detection during countdown
         if (!faceDetected || livenessScore < 0.4 || faceStability < 0.5) {
           clearInterval(timer);
-          setError('Face detection lost during countdown. Please ensure your face remains visible.');
+          setError(t('livepage.error.faceLostRemain'));
           setChallengeState('waiting');
           return null;
         }
@@ -709,13 +713,13 @@ export const LiveCapturePage: React.FC = () => {
 
   const performCapture = async () => {
     if (!canvasRef.current || !sessionData || !apiKey) {
-      setError('Missing required data for capture');
+      setError(t('livepage.error.missingData'));
       return;
     }
 
     // Critical security check - ensure face is still detected before capture
     if (!faceDetected || livenessScore < 0.4 || faceStability < 0.5) {
-      setError('Face detection lost. Please ensure your face is clearly visible and try again.');
+      setError(t('livepage.error.faceLostCapture'));
       setChallengeState('waiting');
       setCountdown(null);
       return;
@@ -732,7 +736,7 @@ export const LiveCapturePage: React.FC = () => {
       // Convert canvas to blob for v2 multipart upload
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(
-          (b) => { if (b) resolve(b); else reject(new Error('Failed to capture image')); },
+          (b) => { if (b) resolve(b); else reject(new Error(t('livepage.error.captureFailed'))); },
           'image/jpeg', 0.8,
         );
       });
@@ -763,7 +767,7 @@ export const LiveCapturePage: React.FC = () => {
       if (!response.ok) {
         const errorData = await response.json();
         console.log('🔧 Error response:', errorData);
-        throw new Error(errorData.message || 'Live capture failed');
+        throw new Error(errorData.message || t('livepage.error.liveCaptureFailed'));
       }
 
       const result: CaptureResult = await response.json();
@@ -780,9 +784,9 @@ export const LiveCapturePage: React.FC = () => {
     } catch (error: any) {
       console.error('📸 Capture failed:', error);
       
-      let errorMessage = 'Failed to capture image. Please try again.';
+      let errorMessage = t('livepage.error.captureFailed');
       if (error.name === 'AbortError') {
-        errorMessage = 'Request timed out. Please check your connection and try again.';
+        errorMessage = t('livepage.error.timedOut');
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -791,7 +795,7 @@ export const LiveCapturePage: React.FC = () => {
       setChallengeState('waiting');
       
       if (captureAttempts >= 3) {
-        setError('Maximum capture attempts exceeded. Please refresh and try again.');
+        setError(t('livepage.error.maxAttempts'));
         cleanup();
       }
     } finally {
@@ -848,17 +852,17 @@ export const LiveCapturePage: React.FC = () => {
         <div className="card" style={{ maxWidth: 440, width: '100%', margin: '0 16px', padding: 32, textAlign: 'center' }}>
           <ExclamationTriangleIcon style={{ width: 48, height: 48, color: C.red, margin: '0 auto 16px' }} />
           <h2 style={{ color: 'var(--ink)', fontFamily: 'var(--mono)', fontSize: 20, fontWeight: 600, margin: '0 0 8px' }}>
-            Session Expired
+            {t('livepage.expiredTitle')}
           </h2>
           <p style={{ color: 'var(--mid)', fontSize: 14, margin: '0 0 24px' }}>
-            Your live capture session has expired. Please start a new verification.
+            {t('livepage.expiredBody')}
           </p>
           <button
             onClick={() => navigate('/verify')}
             className="btn-accent"
             style={{ width: '100%', justifyContent: 'center', minHeight: 48 }}
           >
-            Start New Verification
+            {t('livepage.startNew')}
           </button>
         </div>
       </div>
@@ -899,36 +903,36 @@ export const LiveCapturePage: React.FC = () => {
           </div>
 
           <h2 style={{ color: 'var(--ink)', fontFamily: 'var(--mono)', fontSize: 20, fontWeight: 600, margin: '0 0 8px' }}>
-            {isProcessing ? 'Processing...' : 'Capture Complete'}
+            {isProcessing ? t('livepage.processing') : t('livepage.captureComplete')}
           </h2>
 
           <p style={{ color: 'var(--mid)', fontSize: 14, margin: '0 0 20px' }}>
             {isProcessing
-              ? 'Please wait while we verify your identity.'
+              ? t('livepage.processingBody')
               : isVerified
-                ? 'Your identity has been successfully verified.'
+                ? t('livepage.verifiedBody')
                 : isFailed
-                  ? 'Verification failed. Please try again.'
+                  ? t('livepage.failedBody')
                   : isManualReview
-                    ? 'Your verification is under manual review.'
-                    : 'Your live capture has been successfully processed.'
+                    ? t('livepage.reviewBody')
+                    : t('livepage.processedBody')
             }
           </p>
 
           {/* Results table */}
           <div style={{ background: 'var(--panel)', border: '1px solid var(--rule)', padding: 16, marginBottom: 24, textAlign: 'left' }}>
-            {resultRow('Status', isProcessing && !verificationResults ? 'processing' : finalResults.status, statusClr)}
-            {resultRow('Liveness Check', captureResult.liveness_check_enabled ? 'Enabled' : 'Disabled', captureResult.liveness_check_enabled ? C.green : 'var(--mid)')}
-            {resultRow('Face Matching', captureResult.face_matching_enabled ? 'Enabled' : 'Disabled', captureResult.face_matching_enabled ? C.green : 'var(--mid)')}
+            {resultRow(t('field.status'), isProcessing && !verificationResults ? 'processing' : finalResults.status, statusClr)}
+            {resultRow(t('field.livenessCheck'), captureResult.liveness_check_enabled ? t('field.enabled') : t('field.disabled'), captureResult.liveness_check_enabled ? C.green : 'var(--mid)')}
+            {resultRow(t('field.faceMatching'), captureResult.face_matching_enabled ? t('field.enabled') : t('field.disabled'), captureResult.face_matching_enabled ? C.green : 'var(--mid)')}
 
             {verificationResults && (
               <>
                 {verificationResults.face_match_score !== undefined &&
-                  resultRow('Face Match', `${Math.round(verificationResults.face_match_score * 100)}%`, C.green)}
+                  resultRow(t('field.faceMatch'), `${Math.round(verificationResults.face_match_score * 100)}%`, C.green)}
                 {verificationResults.liveness_score !== undefined &&
-                  resultRow('Liveness Score', `${Math.round(verificationResults.liveness_score * 100)}%`, C.green)}
+                  resultRow(t('field.livenessScore'), `${Math.round(verificationResults.liveness_score * 100)}%`, C.green)}
                 {verificationResults.confidence_score !== undefined &&
-                  resultRow('Confidence', `${Math.round(verificationResults.confidence_score * 100)}%`, C.green)}
+                  resultRow(t('field.confidence'), `${Math.round(verificationResults.confidence_score * 100)}%`, C.green)}
               </>
             )}
           </div>
@@ -940,13 +944,13 @@ export const LiveCapturePage: React.FC = () => {
                 className="btn-accent"
                 style={{ width: '100%', justifyContent: 'center', minHeight: 48 }}
               >
-                View Full Results
+                {t('livepage.viewResults')}
               </button>
             ) : (
               <div style={{ background: 'var(--accent-soft)', border: '1px solid color-mix(in oklab, var(--accent) 30%, transparent)', padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                 <div style={{ width: 16, height: 16, border: '2px solid var(--rule)', borderTopColor: 'var(--accent)', animation: 'spin 1s linear infinite' }} />
                 <span style={{ color: 'var(--accent-ink)', fontFamily: 'var(--mono)', fontSize: 12 }}>
-                  {isPolling ? 'Checking verification status...' : 'Processing verification...'}
+                  {isPolling ? t('livepage.checkingStatus') : t('livepage.processingVerification')}
                 </span>
               </div>
             )}
@@ -958,7 +962,7 @@ export const LiveCapturePage: React.FC = () => {
                   onClick={goToResults}
                   style={{ color: 'var(--accent-ink)', fontFamily: 'var(--mono)', fontSize: 12, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
                 >
-                  Check results manually
+                  {t('livepage.checkManually')}
                 </button>
               </div>
             )}
@@ -985,7 +989,7 @@ export const LiveCapturePage: React.FC = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Live capture failed');
+        throw new Error(errorData.message || t('livepage.error.liveCaptureFailed'));
       }
 
       const result: CaptureResult = await response.json();
@@ -996,7 +1000,7 @@ export const LiveCapturePage: React.FC = () => {
         pollVerificationStatus(result.verification_id);
       }
     } catch (err: any) {
-      setError(err.message || 'Liveness verification failed');
+      setError(err.message || t('livepage.error.livenessFailed'));
     } finally {
       setLoading(false);
     }
@@ -1005,15 +1009,16 @@ export const LiveCapturePage: React.FC = () => {
   // Main camera interface
   return (
     <div style={{ minHeight: '100vh', background: 'var(--paper)', fontFamily: 'var(--sans)' }}>
+      <LanguageSwitcher floating />
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '24px 16px' }}>
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <div className="eyebrow" style={{ marginBottom: 8 }}>idswyft / live-capture</div>
+          <div className="eyebrow" style={{ marginBottom: 8 }}>{t('livepage.eyebrow')}</div>
           <h1 style={{ color: 'var(--ink)', fontFamily: 'var(--mono)', fontSize: 24, fontWeight: 600, margin: '0 0 8px' }}>
-            Live Identity Verification
+            {t('livepage.title')}
           </h1>
           <p style={{ color: 'var(--mid)', fontSize: 14, margin: 0 }}>
-            Complete your verification with live face capture
+            {t('livepage.subtitle')}
           </p>
         </div>
 
@@ -1058,10 +1063,10 @@ export const LiveCapturePage: React.FC = () => {
             <div style={{ padding: 32, textAlign: 'center' }}>
               <CameraIcon style={{ width: 48, height: 48, color: 'var(--accent)', margin: '0 auto 20px' }} />
               <h2 style={{ color: 'var(--ink)', fontFamily: 'var(--mono)', fontSize: 20, fontWeight: 600, margin: '0 0 8px' }}>
-                Camera Access Required
+                {t('livepage.accessTitle')}
               </h2>
               <p style={{ color: 'var(--mid)', fontSize: 14, margin: '0 0 24px' }}>
-                We need access to your camera for live identity verification using Face-API technology.
+                {t('livepage.accessBody')}
               </p>
               <button
                 onClick={initializeCamera}
@@ -1072,17 +1077,17 @@ export const LiveCapturePage: React.FC = () => {
                 {!opencvReady ? (
                   <>
                     <ArrowPathIcon style={{ width: 16, height: 16 }} className="animate-spin" />
-                    Loading Face-API...
+                    {t('livepage.loadingFaceApi')}
                   </>
                 ) : loading ? (
                   <>
                     <ArrowPathIcon style={{ width: 16, height: 16 }} className="animate-spin" />
-                    Initializing Camera...
+                    {t('livepage.initializingCamera')}
                   </>
                 ) : (
                   <>
                     <CameraIcon style={{ width: 16, height: 16 }} />
-                    Enable Camera
+                    {t('common.enableCamera')}
                   </>
                 )}
               </button>
@@ -1094,7 +1099,7 @@ export const LiveCapturePage: React.FC = () => {
             <div style={{ padding: 32, textAlign: 'center' }}>
               <ExclamationTriangleIcon style={{ width: 48, height: 48, color: C.red, margin: '0 auto 20px' }} />
               <h2 style={{ color: 'var(--ink)', fontFamily: 'var(--mono)', fontSize: 20, fontWeight: 600, margin: '0 0 8px' }}>
-                Camera Access Failed
+                {t('livepage.cameraFailedTitle')}
               </h2>
               <p style={{ color: 'var(--mid)', fontSize: 14, margin: '0 0 24px' }}>{error}</p>
               <button
@@ -1102,7 +1107,7 @@ export const LiveCapturePage: React.FC = () => {
                 className="btn-secondary"
                 style={{ margin: '0 auto', minHeight: 48, justifyContent: 'center' }}
               >
-                Try Again
+                {t('common.tryAgain')}
               </button>
             </div>
           )}
@@ -1117,7 +1122,7 @@ export const LiveCapturePage: React.FC = () => {
                     <EyeIcon style={{ width: 20, height: 20, color: 'var(--accent)' }} />
                   </div>
                   <div>
-                    <h3 style={{ color: 'var(--ink)', fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 600, margin: 0 }}>Liveness Challenge</h3>
+                    <h3 style={{ color: 'var(--ink)', fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 600, margin: 0 }}>{t('livepage.challengeTitle')}</h3>
                     <p style={{ color: 'var(--mid)', fontSize: 13, margin: '2px 0 0' }}>{sessionData.liveness_challenge.instruction}</p>
                   </div>
                 </div>
@@ -1133,18 +1138,18 @@ export const LiveCapturePage: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ width: 6, height: 6, background: faceDetected ? C.green : C.red, flexShrink: 0 }} />
                     <span style={{ fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 500, color: faceDetected ? C.green : C.red, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      {faceDetected ? 'Face Detected -- Ready' : 'No Face Detected'}
+                      {faceDetected ? t('livepage.faceReady') : t('livepage.noFace')}
                     </span>
                   </div>
                   {!faceDetected && (
                     <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--mid)' }}>
-                      Position your face in frame
+                      {t('livepage.positionInFrame')}
                     </span>
                   )}
                   {faceDetected && (
                     <div style={{ display: 'flex', gap: 16, fontFamily: 'var(--mono)', fontSize: 11, color: C.green }}>
-                      <span>Liveness: {Math.round(livenessScore * 100)}%</span>
-                      <span>Stability: {Math.round(faceStability * 100)}%</span>
+                      <span>{t('livepage.livenessPct', { value: Math.round(livenessScore * 100) })}</span>
+                      <span>{t('livepage.stabilityPct', { value: Math.round(faceStability * 100) })}</span>
                     </div>
                   )}
                 </div>
@@ -1152,7 +1157,7 @@ export const LiveCapturePage: React.FC = () => {
                 {countdown !== null && (
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontFamily: 'var(--mono)', fontSize: 36, fontWeight: 700, color: 'var(--ink)' }}>{countdown}</div>
-                    <p style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--mid)', margin: 0 }}>Get ready...</p>
+                    <p style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--mid)', margin: 0 }}>{t('livepage.getReady')}</p>
                   </div>
                 )}
               </div>
@@ -1161,11 +1166,11 @@ export const LiveCapturePage: React.FC = () => {
               <div style={{ padding: '16px 20px', borderTop: '1px solid var(--rule)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--mid)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    Attempts: {captureAttempts}/3
+                    {t('livepage.attempts', { current: captureAttempts, max: 3 })}
                   </span>
                   {sessionData && (
                     <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--mid)' }}>
-                      Expires: {new Date(sessionData.expires_at).toLocaleTimeString()}
+                      {t('livepage.expiresAt', { time: new Date(sessionData.expires_at).toLocaleTimeString(locale) })}
                     </span>
                   )}
                 </div>
@@ -1181,27 +1186,27 @@ export const LiveCapturePage: React.FC = () => {
                       {!faceDetected ? (
                         <>
                           <ExclamationTriangleIcon style={{ width: 16, height: 16 }} />
-                          Position Your Face
+                          {t('livepage.positionYourFace')}
                         </>
                       ) : loading ? (
                         <>
                           <ArrowPathIcon style={{ width: 16, height: 16 }} className="animate-spin" />
-                          Processing...
+                          {t('common.processing')}
                         </>
                       ) : livenessScore < 0.4 ? (
                         <>
                           <ExclamationTriangleIcon style={{ width: 16, height: 16 }} />
-                          Improve Lighting
+                          {t('livepage.improveLighting')}
                         </>
                       ) : faceStability < 0.5 ? (
                         <>
                           <ExclamationTriangleIcon style={{ width: 16, height: 16 }} />
-                          Hold Steady
+                          {t('livepage.holdSteady')}
                         </>
                       ) : (
                         <>
                           <CameraIcon style={{ width: 16, height: 16 }} />
-                          Start Capture
+                          {t('livepage.startCapture')}
                         </>
                       )}
                     </button>
@@ -1210,7 +1215,7 @@ export const LiveCapturePage: React.FC = () => {
                   {challengeState === 'active' && (
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>
-                        Performing challenge...
+                        {t('livepage.performingChallenge')}
                       </div>
                       <div style={{ fontSize: 13, color: 'var(--mid)' }}>
                         {sessionData.liveness_challenge.instruction}
@@ -1234,41 +1239,41 @@ export const LiveCapturePage: React.FC = () => {
         {/* Instructions -- v2 checklist style */}
         <div style={{ marginTop: 24, border: '1px solid var(--rule)', background: 'var(--panel)', padding: '20px 24px' }}>
           <h3 style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, color: 'var(--mid)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 16px' }}>
-            Live Capture Instructions
+            {t('livepage.instructionsTitle')}
           </h3>
           <ul className="checklist">
             <li>
               <span className="dot">--</span>
-              <span style={{ color: 'var(--ink)', fontSize: 13 }}>Uses Face-API for reliable camera processing</span>
+              <span style={{ color: 'var(--ink)', fontSize: 13 }}>{t('livepage.instruction1')}</span>
               <span className="status" />
             </li>
             <li>
               <span className="dot">--</span>
-              <span style={{ color: 'var(--ink)', fontSize: 13 }}>Ensure good lighting on your face</span>
+              <span style={{ color: 'var(--ink)', fontSize: 13 }}>{t('livepage.instruction2')}</span>
               <span className="status" />
             </li>
             <li>
               <span className="dot">--</span>
-              <span style={{ color: 'var(--ink)', fontSize: 13 }}>Position your face in the center of frame</span>
+              <span style={{ color: 'var(--ink)', fontSize: 13 }}>{t('livepage.instruction3')}</span>
               <span className="status" />
             </li>
             <li>
               <span className="dot">--</span>
-              <span style={{ color: 'var(--ink)', fontSize: 13 }}>Wait for green indicator showing face detection</span>
+              <span style={{ color: 'var(--ink)', fontSize: 13 }}>{t('livepage.instruction4')}</span>
               <span className="status" />
             </li>
           </ul>
 
           {debugInfo && (
             <div style={{ marginTop: 16, padding: 12, background: 'var(--paper)', border: '1px solid var(--rule)' }}>
-              <p style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--mid)', margin: 0 }}>Status: {debugInfo}</p>
+              <p style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--mid)', margin: 0 }}>{t('livepage.statusPrefix', { info: debugInfo })}</p>
               {cameraState === 'ready' && (
                 <button
                   onClick={retryCamera}
                   className="btn-secondary"
                   style={{ marginTop: 8, minHeight: 36 }}
                 >
-                  Restart Camera
+                  {t('common.restartCamera')}
                 </button>
               )}
             </div>

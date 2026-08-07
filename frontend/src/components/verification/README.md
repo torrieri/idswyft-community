@@ -11,6 +11,7 @@ A production-ready, embeddable verification component that developers can easily
 - ✅ **Mobile responsive** - Works perfectly on all devices
 - ✅ **TypeScript support** - Full type safety
 - ✅ **Customizable** - Props for configuration and callbacks
+- ✅ **Localized** - English and Spanish, see [Internationalization](#internationalization)
 
 ## Basic Usage
 
@@ -138,6 +139,62 @@ The component uses Tailwind CSS classes. You can:
 2. **Customize themes** by modifying the `themeClasses` object
 3. **Override styles** using the `className` prop
 4. **Create custom themes** by extending the theme system
+
+## Internationalization
+
+The whole end-user flow ships in **English (`en`)** and **Spanish (`es`)**. There is no
+i18n library — `src/i18n/` is a ~120-line module (about 11 KB gzipped including both
+catalogs).
+
+### Choosing the language
+
+Resolved once at first render, highest precedence first:
+
+| # | Source | Notes |
+|---|--------|-------|
+| 1 | `?lang=es` query param | What you set on the verification URL you hand the user |
+| 2 | `localStorage['idswyft_lang']` | The user's own pick from the language switcher |
+| 3 | `navigator.languages` | Matched on the primary subtag, so `es-419` → `es` |
+| 4 | `en` | Fallback |
+
+```
+https://your-domain/user-verification?session=<token>&lang=es
+```
+
+`<html lang>` is kept in sync so screen readers pick the right voice.
+
+### Cross-device handoff
+
+`?lang=` is **automatically appended** to the QR-code URL and to the `/verify/mobile`
+redirect. The phone is a different device with its own `localStorage`, so without this
+someone who picks Spanish on the desktop would land on an English page. If you add a
+new navigation between flow surfaces, run the URL through
+`appendLocaleParam(url, locale)` from `src/i18n`.
+
+### Adding a key
+
+1. Add it to `src/i18n/locales/en.ts` (the source of truth).
+2. `npm run type-check` now fails — `es.ts` is typed as a *complete* catalog, so a
+   missing translation is a build error, never a silent English fallback.
+3. Add the Spanish string. `npm test` checks that interpolation placeholders
+   (`{age}`, `{company}`, …) and deliberate `\n` line breaks survive translation.
+
+### Adding a language
+
+Add the code to `SUPPORTED_LOCALES` in `src/i18n/resolve.ts`, a label in
+`LOCALE_LABELS`, a `locales/<code>.ts` typed as `Catalog`, and register it in the
+`CATALOGS` map in `src/i18n/index.tsx`. `tsc` then lists every key you still owe.
+
+### What is never translated
+
+Copy authored by the integrating developer always wins over the catalog:
+`page_builder_config.headerTitle`, `headerSubtitle`, `steps.*.label`,
+`completionTitle`, `completionMessage`, and `branding.company_name`. Those are your
+words, not Idswyft's.
+
+**Known gap:** error messages produced by the API are returned as English prose
+(`body.message`), and the backend has no stable error codes to map from. Client-side
+errors are translated; a server-side failure can still surface in English.
 
 ## Flow Control
 

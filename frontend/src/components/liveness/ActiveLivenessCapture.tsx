@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useActiveLiveness, type LivenessMetadata } from '../../hooks/useActiveLiveness';
+import { useT, type TFunction, type TranslationKey } from '../../i18n';
 
 interface ActiveLivenessCaptureProps {
   onComplete: (blob: Blob, metadata: LivenessMetadata) => void;
@@ -19,7 +20,8 @@ interface ActiveLivenessCaptureProps {
 // liveness anti-spoofing (Community #37).
 
 interface CameraErrorInfo {
-  message: string;
+  key: TranslationKey;
+  vars?: Record<string, string>;
   allowFallback: boolean;
 }
 
@@ -27,36 +29,27 @@ function mapCameraError(err: unknown): CameraErrorInfo {
   if (err instanceof Error) {
     switch (err.name) {
       case 'NotAllowedError':
-        return {
-          message: 'Camera permission denied. Please grant camera access in your browser settings and try again.',
-          allowFallback: false,
-        };
+        return { key: 'liveness.error.permissionDenied', allowFallback: false };
       case 'NotFoundError':
-        return {
-          message: 'No camera detected on this device.',
-          allowFallback: true,
-        };
+        return { key: 'liveness.error.notFound', allowFallback: true };
       case 'NotReadableError':
-        return {
-          message: 'Camera is in use by another app. Close other apps using the camera and try again.',
-          allowFallback: false,
-        };
+        return { key: 'liveness.error.inUse', allowFallback: false };
       case 'OverconstrainedError':
-        return {
-          message: 'Camera does not meet requirements (a front-facing camera is needed).',
-          allowFallback: false,
-        };
+        return { key: 'liveness.error.overconstrained', allowFallback: false };
       default:
         return {
-          message: `Camera access failed (${err.name}): ${err.message}`,
+          key: 'liveness.error.generic',
+          vars: { name: err.name, message: err.message },
           allowFallback: false,
         };
     }
   }
-  return {
-    message: 'Camera access failed for an unknown reason.',
-    allowFallback: false,
-  };
+  return { key: 'liveness.error.unknown', allowFallback: false };
+}
+
+/** Resolve a mapped camera error to display text. */
+function cameraErrorText(t: TFunction, info: CameraErrorInfo): string {
+  return t(info.key, info.vars);
 }
 
 // Stream-readiness timeout — if the `playing` event hasn't fired
@@ -83,6 +76,7 @@ export function ActiveLivenessCapture({
   onFallback,
   isProcessing = false,
 }: ActiveLivenessCaptureProps) {
+  const t = useT();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -159,27 +153,27 @@ export function ActiveLivenessCapture({
             clearTimeout(readyTimerRef.current);
             readyTimerRef.current = undefined;
           }
-          setCameraError('Could not start the video preview. Please try again.');
+          setCameraError(t('liveness.error.previewFailed'));
         });
 
         // If `playing` doesn't fire within the timeout, surface an error
         // rather than leaving the user staring at a frozen black video.
         readyTimerRef.current = setTimeout(() => {
-          setCameraError('Camera failed to start within 8 seconds. Please try again.');
+          setCameraError(t('liveness.error.startTimeout'));
         }, STREAM_READY_TIMEOUT_MS);
       })
       .catch((err: unknown) => {
-        const { message, allowFallback } = mapCameraError(err);
+        const info = mapCameraError(err);
         // Keep the original error in the console for support diagnostics.
         console.error('Camera access failed:', err);
-        if (allowFallback) {
+        if (info.allowFallback) {
           // No camera hardware — the legacy static-photo capture is our only path.
           onFallback();
         } else {
-          setCameraError(message);
+          setCameraError(cameraErrorText(t, info));
         }
       });
-  }, [onFallback, stopStream]);
+  }, [onFallback, stopStream, t]);
 
   const handleComplete = useCallback(
     (blob: Blob, metadata: LivenessMetadata) => {
@@ -192,9 +186,9 @@ export function ActiveLivenessCapture({
   const {
     phase,
     direction,
-    instruction,
+    instructionKey,
     progress,
-    error,
+    errorKey,
     retry,
   } = useActiveLiveness({
     videoElement: streamReady ? videoRef.current : null,
@@ -210,17 +204,13 @@ export function ActiveLivenessCapture({
       <div style={FRAME_STYLE}>
         <style>{LIVENESS_CSS}</style>
         <div className="lv-intro">
-          <h2 className="lv-intro-title">Camera access required</h2>
-          <p className="lv-intro-body">
-            We&apos;ll use your front-facing camera for a quick liveness check
-            to verify it&apos;s really you. Your video is processed for the
-            check and not stored as a recording.
-          </p>
+          <h2 className="lv-intro-title">{t('liveness.intro.title')}</h2>
+          <p className="lv-intro-body">{t('liveness.intro.body')}</p>
           <button onClick={requestCamera} className="lv-btn-primary">
-            Start camera
+            {t('liveness.intro.start')}
           </button>
           <button onClick={onCancel} className="lv-btn-ghost">
-            Skip
+            {t('common.skip')}
           </button>
         </div>
       </div>
@@ -233,13 +223,13 @@ export function ActiveLivenessCapture({
       <div style={FRAME_STYLE}>
         <style>{LIVENESS_CSS}</style>
         <div className="lv-intro">
-          <h2 className="lv-intro-title lv-intro-title--err">Camera error</h2>
+          <h2 className="lv-intro-title lv-intro-title--err">{t('liveness.errorTitle')}</h2>
           <p className="lv-intro-body">{cameraError}</p>
           <button onClick={requestCamera} className="lv-btn-primary">
-            Try again
+            {t('common.tryAgain')}
           </button>
           <button onClick={onCancel} className="lv-btn-ghost">
-            Skip
+            {t('common.skip')}
           </button>
         </div>
       </div>
@@ -276,10 +266,10 @@ export function ActiveLivenessCapture({
   const challengeActive = phase === 'turn' || phase === 'return_center';
 
   // ── Tip text ──
-  const tipText = phase === 'ready' ? 'Good lighting · Face uncovered · No sunglasses'
-    : phase === 'failed' ? 'Ensure good lighting and face is centred'
-    : phase === 'completed' ? 'Verification complete'
-    : 'Keep your face visible throughout';
+  const tipText = phase === 'ready' ? t('liveness.tip.ready')
+    : phase === 'failed' ? t('liveness.tip.failed')
+    : phase === 'completed' ? t('liveness.tip.completed')
+    : t('liveness.tip.default');
 
   // ── Oval stroke color ──
   const ovalStroke = borderState === 'fail' ? '#ff3b5c'
@@ -415,15 +405,15 @@ export function ActiveLivenessCapture({
         {isProcessing && (
           <div className="lv-processing">
             <div className="lv-processing-spinner" />
-            <p className="lv-processing-text">Processing verification...</p>
-            <p className="lv-processing-sub">Analyzing your document and identity</p>
+            <p className="lv-processing-text">{t('liveness.processing')}</p>
+            <p className="lv-processing-sub">{t('liveness.processingSub')}</p>
           </div>
         )}
 
         {/* Cancel pill — top-left */}
         {!isProcessing && (
           <button onClick={onCancel} className="lv-cancel">
-            {phase === 'completed' ? 'Done' : 'Skip'}
+            {phase === 'completed' ? t('common.done') : t('common.skip')}
           </button>
         )}
 
@@ -433,10 +423,10 @@ export function ActiveLivenessCapture({
             <p className="lv-bar-text" style={{
               color: phase === 'completed' ? '#00d4b4' : phase === 'failed' ? '#ff3b5c' : '#e8f4f8',
             }}>
-              {instruction}
+              {instructionKey ? t(instructionKey) : ''}
             </p>
 
-            {error && <p className="lv-bar-error">{error}</p>}
+            {errorKey && <p className="lv-bar-error">{t(errorKey)}</p>}
 
             {/* Challenge progress dots */}
             <div className="lv-dots">
@@ -454,7 +444,7 @@ export function ActiveLivenessCapture({
             {/* Retry button */}
             {phase === 'failed' && (
               <button onClick={retry} className="lv-btn-retry">
-                Try Again
+                {t('common.tryAgain')}
               </button>
             )}
           </div>

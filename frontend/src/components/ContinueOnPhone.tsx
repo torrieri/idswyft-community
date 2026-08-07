@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'react-qr-code';
 import { API_BASE_URL } from '../config/api';
+import { useT, useLocale, appendLocaleParam } from '../i18n';
 
 type HandoffState = 'idle' | 'waiting' | 'done';
 
@@ -33,6 +34,8 @@ export const ContinueOnPhone: React.FC<ContinueOnPhoneProps> = ({
   ageThreshold,
   onComplete,
 }) => {
+  const t = useT();
+  const { locale } = useLocale();
   const [state, setState] = useState<HandoffState>('idle');
   const [mobileUrl, setMobileUrl] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -95,6 +98,9 @@ export const ContinueOnPhone: React.FC<ContinueOnPhoneProps> = ({
       let url = `${window.location.origin}/verify/mobile?token=${data.token}`;
       if (verificationMode) url += `&verification_mode=${verificationMode}`;
       if (ageThreshold) url += `&age_threshold=${ageThreshold}`;
+      // The phone is a different device — without ?lang= in the QR it would
+      // fall back to that device's browser language, not the one chosen here.
+      url = appendLocaleParam(url, locale);
 
       setMobileUrl(url);
       setTimeLeft(Math.floor((expiry.getTime() - Date.now()) / 1000));
@@ -102,7 +108,7 @@ export const ContinueOnPhone: React.FC<ContinueOnPhoneProps> = ({
       startTimers(data.token, expiry);
     } catch (err) {
       console.error('Failed to generate QR:', err);
-      setError('Could not generate QR code. Please try again.');
+      setError(t('phone.qrError'));
     } finally {
       if (mountedRef.current) setIsGenerating(false);
     }
@@ -178,18 +184,18 @@ export const ContinueOnPhone: React.FC<ContinueOnPhoneProps> = ({
     return (
       <div style={{ background: 'var(--accent-soft)', border: '1px solid color-mix(in oklab, var(--accent) 30%, transparent)', padding: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', height: '100%', justifyContent: 'center', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 600, fontFamily: 'var(--sans)' }}>Continue on Phone</span>
-          <span style={{ fontSize: 10, background: 'var(--accent-soft)', color: 'var(--accent-ink)', padding: '2px 8px', fontWeight: 600, fontFamily: 'var(--mono)', border: '1px solid color-mix(in oklab, var(--accent) 30%, transparent)' }}>Recommended</span>
+          <span style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 600, fontFamily: 'var(--sans)' }}>{t('phone.title')}</span>
+          <span style={{ fontSize: 10, background: 'var(--accent-soft)', color: 'var(--accent-ink)', padding: '2px 8px', fontWeight: 600, fontFamily: 'var(--mono)', border: '1px solid color-mix(in oklab, var(--accent) 30%, transparent)' }}>{t('phone.recommended')}</span>
         </div>
         <p style={{ fontSize: 12, color: 'var(--mid)', lineHeight: 1.5, fontFamily: 'var(--sans)' }}>
-          Better camera quality for liveness and document capture.
+          {t('phone.body')}
         </p>
         <button
           onClick={generateQR}
           disabled={(!sessionToken && (!apiKey.trim() || !userId.trim())) || isGenerating}
           style={{ background: 'var(--ink)', color: 'var(--paper)', border: '1px solid var(--ink)', padding: '10px 0', width: '100%', fontWeight: 500, fontSize: 13, fontFamily: 'var(--mono)', cursor: (!sessionToken && (!apiKey.trim() || !userId.trim())) || isGenerating ? 'not-allowed' : 'pointer', opacity: (!sessionToken && (!apiKey.trim() || !userId.trim())) || isGenerating ? 0.5 : 1 }}
         >
-          {isGenerating ? 'Generating\u2026' : 'Generate QR Code'}
+          {isGenerating ? t('phone.generating') : t('phone.generate')}
         </button>
         {error && (
           <p role="alert" style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>{error}</p>
@@ -205,14 +211,13 @@ export const ContinueOnPhone: React.FC<ContinueOnPhoneProps> = ({
       <div style={{ border: '1px solid var(--rule)', background: 'var(--panel)', padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 12 }}>
         {isLocalhost && (
           <div style={{ width: '100%', background: 'var(--flag-soft)', border: '1px solid var(--rule)', padding: '8px 12px', fontSize: 12, color: 'var(--ink)', textAlign: 'left', fontFamily: 'var(--mono)' }}>
-            <strong>Local dev tip:</strong> Open this page at{' '}
-            <span style={{ fontWeight: 500 }}>
-              http://{window.location.hostname === 'localhost' ? '192.168.x.x' : window.location.hostname}:{window.location.port}/demo
-            </span>{' '}
-            (your LAN IP) so the QR code works on your phone.
+            <strong>{t('phone.localTipTitle')}</strong>{' '}
+            {t('phone.localTipBody', {
+              url: `http://${window.location.hostname === 'localhost' ? '192.168.x.x' : window.location.hostname}:${window.location.port}/demo`,
+            })}
           </div>
         )}
-        <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)', fontFamily: 'var(--sans)' }}>Scan with your phone camera</p>
+        <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)', fontFamily: 'var(--sans)' }}>{t('phone.scanPrompt')}</p>
         <div style={{ background: '#ffffff', padding: 12 }}>
           {mobileUrl && <QRCode value={mobileUrl} size={180} />}
         </div>
@@ -221,7 +226,7 @@ export const ContinueOnPhone: React.FC<ContinueOnPhoneProps> = ({
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--mid)', fontFamily: 'var(--mono)' }}>
           <span style={{ width: 8, height: 8, background: 'var(--accent)', flexShrink: 0 }} className="animate-pulse" />
-          <span>Waiting for phone…</span>
+          <span>{t('phone.waiting')}</span>
           <span style={{ color: 'var(--accent-ink)', fontWeight: 500 }}>{fmt(timeLeft)}</span>
         </div>
         <a
@@ -229,7 +234,7 @@ export const ContinueOnPhone: React.FC<ContinueOnPhoneProps> = ({
           onClick={(e) => { e.preventDefault(); cancel(); }}
           style={{ fontSize: 12, color: 'var(--soft)', textDecoration: 'underline', fontFamily: 'var(--mono)' }}
         >
-          Cancel — use this device instead
+          {t('phone.cancel')}
         </a>
       </div>
     );
@@ -237,10 +242,10 @@ export const ContinueOnPhone: React.FC<ContinueOnPhoneProps> = ({
 
   // ── DONE ──
   const statusMap: Record<string, { icon: string; color: string; label: string }> = {
-    verified:      { icon: '✓', color: 'text-emerald-600', label: 'Verified' },
-    completed:     { icon: '✓', color: 'text-emerald-600', label: 'Verified' },
-    failed:        { icon: '✗', color: 'text-red-500',     label: 'Failed' },
-    manual_review: { icon: '⏳', color: 'text-yellow-600', label: 'Pending Review' },
+    verified:      { icon: '✓', color: 'text-emerald-600', label: t('badge.verified') },
+    completed:     { icon: '✓', color: 'text-emerald-600', label: t('badge.verified') },
+    failed:        { icon: '✗', color: 'text-red-500',     label: t('field.failed') },
+    manual_review: { icon: '⏳', color: 'text-yellow-600', label: t('field.pendingReview') },
   };
   const cfg = statusMap[result?.status ?? ''] ?? statusMap.manual_review;
 
@@ -248,43 +253,43 @@ export const ContinueOnPhone: React.FC<ContinueOnPhoneProps> = ({
     <div style={{ border: '1px solid var(--rule)', background: 'var(--panel)', padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 8 }}>
       <div style={{ fontSize: 36, fontWeight: 700, color: cfg.color === 'text-emerald-600' ? 'var(--accent-ink)' : cfg.color === 'text-red-500' ? '#f87171' : 'var(--flag)' }}>{cfg.icon}</div>
       <h3 style={{ fontWeight: 600, fontSize: 18, fontFamily: 'var(--sans)', color: cfg.color === 'text-emerald-600' ? 'var(--accent-ink)' : cfg.color === 'text-red-500' ? '#f87171' : 'var(--flag)' }}>{cfg.label}</h3>
-      <p style={{ fontSize: 13, color: 'var(--mid)', fontFamily: 'var(--sans)' }}>Completed on mobile device</p>
+      <p style={{ fontSize: 13, color: 'var(--mid)', fontFamily: 'var(--sans)' }}>{t('phone.completedOnMobile')}</p>
       <div style={{ width: '100%', marginTop: 8, textAlign: 'left', fontSize: 13, fontFamily: 'var(--mono)' }}>
         {result?.confidence_score != null && (
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed var(--rule)' }}>
-            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Confidence</span>
+            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('field.confidence')}</span>
             <span style={{ fontWeight: 500, color: 'var(--ink)' }}>{Math.round(result.confidence_score * 100)}%</span>
           </div>
         )}
         {(result?.face_match_results?.similarity_score ?? result?.face_match_score) != null && (
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed var(--rule)' }}>
-            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Face Match</span>
+            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('field.faceMatch')}</span>
             <span style={{ fontWeight: 500, color: 'var(--ink)' }}>{Math.round((result?.face_match_results?.similarity_score ?? result?.face_match_score ?? 0) * 100)}%</span>
           </div>
         )}
         {(result?.liveness_results?.score ?? result?.liveness_score) != null && (
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed var(--rule)' }}>
-            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Liveness</span>
+            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('field.liveness')}</span>
             <span style={{ fontWeight: 500, color: 'var(--ink)' }}>{Math.round((result?.liveness_results?.score ?? result?.liveness_score ?? 0) * 100)}%</span>
           </div>
         )}
         {(result?.cross_validation_results?.overall_score) != null && (
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed var(--rule)' }}>
-            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Cross-Validation</span>
+            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('field.crossValidation')}</span>
             <span style={{ fontWeight: 500, color: 'var(--ink)' }}>{Math.round(result.cross_validation_results.overall_score * 100)}%</span>
           </div>
         )}
         {result?.aml_screening && (
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed var(--rule)' }}>
-            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>AML Screening</span>
+            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('field.amlScreening')}</span>
             <span style={{ fontWeight: 500, color: result.aml_screening.risk_level === 'clear' ? 'var(--accent-ink)' : '#f87171' }}>
-              {result.aml_screening.risk_level === 'clear' ? 'Clear' : result.aml_screening.risk_level?.replace('_', ' ')}
+              {result.aml_screening.risk_level === 'clear' ? t('field.clear') : result.aml_screening.risk_level?.replace('_', ' ')}
             </span>
           </div>
         )}
         {result?.risk_score && (
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed var(--rule)' }}>
-            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Risk Score</span>
+            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('field.riskScore')}</span>
             <span style={{ fontWeight: 500, color: result.risk_score.risk_level === 'low' ? 'var(--accent-ink)' : result.risk_score.risk_level === 'medium' ? 'var(--flag)' : '#f87171' }}>
               {result.risk_score.overall_score}/100
             </span>
@@ -292,7 +297,7 @@ export const ContinueOnPhone: React.FC<ContinueOnPhoneProps> = ({
         )}
         {result?.rejection_reason && (
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0 0', borderTop: '1px solid var(--rule)', marginTop: 4 }}>
-            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Rejection</span>
+            <span style={{ color: 'var(--mid)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('field.rejection')}</span>
             <span style={{ fontSize: 12, color: '#f87171' }}>{result.rejection_reason}</span>
           </div>
         )}

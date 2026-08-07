@@ -4,6 +4,7 @@ import { API_BASE_URL, parseApiError } from '../../config/api';
 import { sanitizeRedirectUrl } from '../../utils/redirect';
 import { ContinueOnPhone } from '../ContinueOnPhone';
 import { LiveCaptureWidget } from './LiveCaptureWidget';
+import { useT, type TranslationKey } from '../../i18n';
 
 export interface VerificationProps {
   apiKey: string;
@@ -42,37 +43,41 @@ export interface VerificationResult {
 // 1 Initialize  2 Front Doc  3 Front OCR  4 Back Doc  5 Cross-Check  6 Selfie  7 Done
 // ─────────────────────────────────────────────────────────────────────────────
 
-const FULL_STEPS = [
-  { step: 1, label: 'Start' },
-  { step: 2, label: 'Front ID' },
-  { step: 3, label: 'Scanning' },
-  { step: 4, label: 'Back ID' },
-  { step: 5, label: 'Checking' },
-  { step: 6, label: 'Selfie' },
-  { step: 7, label: 'Done' },
+// Labels are translation keys — renderProgress resolves them per render so the
+// stepper follows the active locale.
+interface Step { step: number; label: TranslationKey }
+
+const FULL_STEPS: Step[] = [
+  { step: 1, label: 'desktop.step.start' },
+  { step: 2, label: 'desktop.step.frontId' },
+  { step: 3, label: 'desktop.step.scanning' },
+  { step: 4, label: 'desktop.step.backId' },
+  { step: 5, label: 'desktop.step.checking' },
+  { step: 6, label: 'desktop.step.selfie' },
+  { step: 7, label: 'desktop.step.done' },
 ];
 
-const DOCUMENT_ONLY_STEPS = [
-  { step: 1, label: 'Start' },
-  { step: 2, label: 'Front ID' },
-  { step: 3, label: 'Scanning' },
-  { step: 4, label: 'Back ID' },
-  { step: 5, label: 'Checking' },
-  { step: 7, label: 'Done' },
+const DOCUMENT_ONLY_STEPS: Step[] = [
+  { step: 1, label: 'desktop.step.start' },
+  { step: 2, label: 'desktop.step.frontId' },
+  { step: 3, label: 'desktop.step.scanning' },
+  { step: 4, label: 'desktop.step.backId' },
+  { step: 5, label: 'desktop.step.checking' },
+  { step: 7, label: 'desktop.step.done' },
 ];
 
-const IDENTITY_STEPS = [
-  { step: 1, label: 'Start' },
-  { step: 2, label: 'Front ID' },
-  { step: 3, label: 'Scanning' },
-  { step: 6, label: 'Selfie' },
-  { step: 7, label: 'Done' },
+const IDENTITY_STEPS: Step[] = [
+  { step: 1, label: 'desktop.step.start' },
+  { step: 2, label: 'desktop.step.frontId' },
+  { step: 3, label: 'desktop.step.scanning' },
+  { step: 6, label: 'desktop.step.selfie' },
+  { step: 7, label: 'desktop.step.done' },
 ];
 
-const AGE_ONLY_STEPS = [
-  { step: 1, label: 'Start' },
-  { step: 2, label: 'Upload ID' },
-  { step: 7, label: 'Done' },
+const AGE_ONLY_STEPS: Step[] = [
+  { step: 1, label: 'desktop.step.start' },
+  { step: 2, label: 'desktop.step.uploadId' },
+  { step: 7, label: 'desktop.step.done' },
 ];
 
 interface FrontOCRData {
@@ -99,6 +104,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
   ageThreshold,
   branding: _branding,
 }) => {
+  const t = useT();
   const redirectUrl = sanitizeRedirectUrl(rawRedirectUrl || '');
   const isAgeOnly = verificationMode === 'age_only';
   const isDocumentOnly = verificationMode === 'document_only';
@@ -184,7 +190,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
       return;
     }
 
-    if (!apiKey || !userId) { toast.error('Missing required parameters'); return; }
+    if (!apiKey || !userId) { toast.error(t('desktop.error.missingParams')); return; }
     setIsLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/initialize`, {
@@ -198,14 +204,14 @@ const EndUserVerification: React.FC<VerificationProps> = ({
       });
       if (!res.ok) {
         const err = await parseApiError(res);
-        throw new Error(err || 'Failed to start verification');
+        throw new Error(err || t('desktop.error.startFailed'));
       }
       const data = await res.json();
       if (!mountedRef.current) return;
       setVerificationId(data.verification_id);
       setCurrentStep(2);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to start verification');
+      toast.error(err.message || t('desktop.error.startFailed'));
     } finally {
       if (mountedRef.current) setIsLoading(false);
     }
@@ -235,7 +241,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
       });
       if (!res.ok) {
         const err = await parseApiError(res);
-        throw new Error(err || 'Failed to upload document');
+        throw new Error(err || t('desktop.error.uploadFailed'));
       }
       const data = await res.json();
       // Age-only mode: front-document response includes final_result directly
@@ -243,7 +249,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         showFinalResult(data);
         return;
       }
-      toast.success('Document uploaded successfully');
+      toast.success(t('desktop.toast.uploaded'));
       // Passport or identity flow: skip back doc, go to scanning then liveness
       const backSkipped = isIdentity || data.detected_document_type === 'passport' || data.requires_back === false;
       if (backSkipped) {
@@ -255,7 +261,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         pollFrontOCR();
       }
     } catch (err: any) {
-      toast.error(err.message || 'Failed to upload document');
+      toast.error(err.message || t('desktop.error.uploadFailed'));
     } finally {
       if (mountedRef.current) setIsLoading(false);
     }
@@ -267,7 +273,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
   const pollFrontOCR = async (attempt = 0) => {
     if (!verificationId || !mountedRef.current) return;
     if (attempt >= MAX_POLL_ATTEMPTS) {
-      toast.error('Verification timed out. Please refresh and try again.');
+      toast.error(t('desktop.error.timedOut'));
       return;
     }
     try {
@@ -290,7 +296,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
   const pollFrontOCRForIdentity = async (attempt = 0) => {
     if (!verificationId || !mountedRef.current) return;
     if (attempt >= MAX_POLL_ATTEMPTS) {
-      toast.error('Verification timed out. Please refresh and try again.');
+      toast.error(t('desktop.error.timedOut'));
       return;
     }
     try {
@@ -334,13 +340,13 @@ const EndUserVerification: React.FC<VerificationProps> = ({
       });
       if (!res.ok) {
         const err = await parseApiError(res);
-        throw new Error(err || 'Failed to upload back document');
+        throw new Error(err || t('desktop.error.uploadBackFailed'));
       }
-      toast.success('Back document uploaded');
+      toast.success(t('desktop.toast.backUploaded'));
       setCurrentStep(5);
       pollCrossValidation();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to upload back document');
+      toast.error(err.message || t('desktop.error.uploadBackFailed'));
     } finally {
       if (mountedRef.current) setIsLoading(false);
     }
@@ -350,7 +356,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
   const pollCrossValidation = async (attempt = 0) => {
     if (!verificationId || !mountedRef.current) return;
     if (attempt >= MAX_POLL_ATTEMPTS) {
-      toast.error('Document validation timed out. Please refresh and try again.');
+      toast.error(t('desktop.error.validationTimedOut'));
       return;
     }
     try {
@@ -412,7 +418,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         method: 'POST',
         headers: authHeader,
       });
-      if (!res.ok) { const err = await parseApiError(res); throw new Error(err || 'Failed to get challenge'); }
+      if (!res.ok) { const err = await parseApiError(res); throw new Error(err || t('voice.error.challengeFailed')); }
       const data = await res.json();
       setVoiceChallengeDigits(data.challenge_digits);
       setVoiceExpiresIn(data.expires_in_seconds);
@@ -429,7 +435,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         }
       }, 1000) as unknown as number;
     } catch (error) {
-      setVoiceStepError(error instanceof Error ? error.message : 'Failed to get challenge');
+      setVoiceStepError(error instanceof Error ? error.message : t('voice.error.challengeFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -471,7 +477,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         }
       }, 10000) as unknown as number;
     } catch (err) {
-      setVoiceStepError(err instanceof Error ? err.message : 'Microphone access denied');
+      setVoiceStepError(err instanceof Error ? err.message : t('voice.error.micDenied'));
     }
   };
 
@@ -496,14 +502,14 @@ const EndUserVerification: React.FC<VerificationProps> = ({
       });
       if (!response.ok) {
         const err = await response.json();
-        throw new Error(err.error || 'Voice verification failed');
+        throw new Error(err.error || t('voice.error.verifyFailed'));
       }
       if (voiceExpiryRef.current) clearInterval(voiceExpiryRef.current);
       // Resume polling for final result
       setCurrentStep(7);
       waitForFinalResult();
     } catch (error) {
-      setVoiceStepError(error instanceof Error ? error.message : 'Voice verification failed');
+      setVoiceStepError(error instanceof Error ? error.message : t('voice.error.verifyFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -512,7 +518,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
   const waitForFinalResult = async (attempt = 0) => {
     if (!verificationId || !mountedRef.current) return;
     if (attempt >= MAX_POLL_ATTEMPTS) {
-      toast.error('Live capture verification timed out. Please refresh and try again.');
+      toast.error(t('desktop.error.liveTimedOut'));
       return;
     }
     try {
@@ -577,7 +583,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
       });
       if (!res.ok) {
         const err = await parseApiError(res);
-        throw new Error(err || 'Failed to restart verification');
+        throw new Error(err || t('desktop.error.restartFailed'));
       }
       if (!mountedRef.current) return;
       // Reset local state — reuse same verificationId (server reset it)
@@ -596,7 +602,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
       }
       setCurrentStep(2); // Back to front doc upload
     } catch (err: any) {
-      toast.error(err.message || 'Failed to restart verification');
+      toast.error(err.message || t('desktop.error.restartFailed'));
     } finally {
       if (mountedRef.current) setRetryProcessing(false);
     }
@@ -606,13 +612,13 @@ const EndUserVerification: React.FC<VerificationProps> = ({
   const baseSteps = isAgeOnly ? AGE_ONLY_STEPS
     : (isIdentity || skipBack)
       ? (isDocumentOnly
-        ? [{ step: 1, label: 'Start' }, { step: 2, label: 'Front ID' }, { step: 3, label: 'Scanning' }, { step: 7, label: 'Done' }]
+        ? ([{ step: 1, label: 'desktop.step.start' }, { step: 2, label: 'desktop.step.frontId' }, { step: 3, label: 'desktop.step.scanning' }, { step: 7, label: 'desktop.step.done' }] as Step[])
         : IDENTITY_STEPS)
     : isDocumentOnly ? DOCUMENT_ONLY_STEPS
     : FULL_STEPS;
   // Insert voice step before Done when voice auth is enabled
   const steps = voiceAuthEnabled
-    ? [...baseSteps.filter(s => s.step !== 7), { step: 65, label: 'Voice' }, { step: 7, label: 'Done' }]
+    ? ([...baseSteps.filter(s => s.step !== 7), { step: 65, label: 'desktop.step.voice' }, { step: 7, label: 'desktop.step.done' }] as Step[])
     : baseSteps;
   const stepIdx = steps.findIndex(s => s.step === currentStep);
   const activeStepIdx = stepIdx >= 0 ? stepIdx : steps.length - 1;
@@ -623,7 +629,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         {steps.map(({ step, label }, i) => (
           <div key={step} className={`step ${activeStepIdx === i ? 'active' : activeStepIdx > i ? 'done' : ''}`}>
             <span className="step-n">{String(i + 1).padStart(2, '0')}</span>
-            <span>{label}</span>
+            <span>{t(label)}</span>
           </div>
         ))}
       </div>
@@ -641,12 +647,12 @@ const EndUserVerification: React.FC<VerificationProps> = ({
       <input type="file" accept="image/*" onChange={onChange} className="hidden" id={id} />
       <label htmlFor={id} className="cursor-pointer block">
         {previewUrl ? (
-          <img src={previewUrl} alt="Preview" className="max-h-40 mx-auto" style={{ border: '1px solid var(--rule)' }} />
+          <img src={previewUrl} alt={t('desktop.upload.previewAlt')} className="max-h-40 mx-auto" style={{ border: '1px solid var(--rule)' }} />
         ) : (
           <div className="py-4">
             <div className="mono" style={{ fontSize: 24, marginBottom: 12, color: 'var(--mid)' }}>+</div>
             <p className="font-medium" style={{ color: 'var(--ink)' }}>{label}</p>
-            <p className="mono" style={{ fontSize: 11, marginTop: 4, color: 'var(--soft)', letterSpacing: '0.04em' }}>JPG, PNG up to 10MB</p>
+            <p className="mono" style={{ fontSize: 11, marginTop: 4, color: 'var(--soft)', letterSpacing: '0.04em' }}>{t('desktop.upload.hint')}</p>
           </div>
         )}
       </label>
@@ -657,17 +663,17 @@ const EndUserVerification: React.FC<VerificationProps> = ({
   const renderOCRSummary = () => {
     if (!frontOCR) return null;
     const fields: [string, string | undefined][] = [
-      ['Name', frontOCR.full_name],
-      ['Document #', frontOCR.document_number],
-      ['Date of Birth', frontOCR.date_of_birth],
-      ['Expiry', frontOCR.expiry_date],
-      ['Nationality', frontOCR.nationality],
+      [t('field.name'), frontOCR.full_name],
+      [t('field.documentNumber'), frontOCR.document_number],
+      [t('field.dateOfBirth'), frontOCR.date_of_birth],
+      [t('field.expiry'), frontOCR.expiry_date],
+      [t('field.nationality'), frontOCR.nationality],
     ];
     const visible = fields.filter(([, v]) => v);
     if (!visible.length) return null;
     return (
       <div className="mb-5">
-        <p className="eyebrow" style={{ marginBottom: 8 }}>Front ID -- Extracted Data</p>
+        <p className="eyebrow" style={{ marginBottom: 8 }}>{t('desktop.ocrSummary.title')}</p>
         <div className="result-grid">
           {visible.map(([label, value]) => (
             <React.Fragment key={label}>
@@ -688,8 +694,8 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         return (
           <div className="text-center py-8">
             <div className="loading-spinner-glass mx-auto mb-5" />
-            <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--ink)' }}>Starting Verification</h2>
-            <p className="text-sm" style={{ color: 'var(--mid)' }}>Initializing your verification session...</p>
+            <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--ink)' }}>{t('desktop.init.title')}</h2>
+            <p className="text-sm" style={{ color: 'var(--mid)' }}>{t('desktop.init.body')}</p>
           </div>
         );
 
@@ -699,31 +705,31 @@ const EndUserVerification: React.FC<VerificationProps> = ({
           <div className="space-y-5">
             <div className="text-center">
               <h2 className="text-xl font-semibold mb-1" style={{ color: 'var(--ink)' }}>
-                {isAgeOnly ? 'Upload Your ID' : 'Upload Front of ID'}
+                {isAgeOnly ? t('desktop.front.titleAge') : t('desktop.front.title')}
               </h2>
               <p className="text-sm" style={{ color: 'var(--mid)' }}>
                 {isAgeOnly
-                  ? 'Upload your government-issued ID to verify your age'
+                  ? t('desktop.front.bodyAge')
                   : isIdentity
-                    ? 'Take a clear photo of the front of your ID -- no back scan needed'
-                    : 'Take a clear photo of the front of your government-issued ID'}
+                    ? t('desktop.front.bodyIdentity')
+                    : t('desktop.front.body')}
               </p>
             </div>
 
             <div>
-              <label className="form-label">Document Type</label>
+              <label className="form-label">{t('docType.label')}</label>
               <select
                 value={documentType}
                 onChange={e => setDocumentType(e.target.value)}
                 className="form-input"
               >
-                {allowedDocumentTypes.includes('national_id') && <option value="national_id">National ID</option>}
-                {allowedDocumentTypes.includes('passport') && <option value="passport">Passport</option>}
-                {allowedDocumentTypes.includes('drivers_license') && <option value="drivers_license">Driver's License</option>}
+                {allowedDocumentTypes.includes('national_id') && <option value="national_id">{t('docType.national_id')}</option>}
+                {allowedDocumentTypes.includes('passport') && <option value="passport">{t('docType.passport')}</option>}
+                {allowedDocumentTypes.includes('drivers_license') && <option value="drivers_license">{t('docType.drivers_license')}</option>}
               </select>
             </div>
 
-            {renderFileArea('front-upload', frontPreviewUrl, handleFrontFileSelect, 'Upload Front of ID')}
+            {renderFileArea('front-upload', frontPreviewUrl, handleFrontFileSelect, t('desktop.upload.cta'))}
 
             {frontFile && (
               <button
@@ -735,9 +741,9 @@ const EndUserVerification: React.FC<VerificationProps> = ({
                 {isLoading ? (
                   <span className="flex items-center justify-center gap-2">
                     <div className="loading-spinner" style={{ width: 16, height: 16 }} />
-                    Uploading...
+                    {t('common.uploading')}
                   </span>
-                ) : 'Continue'}
+                ) : t('common.continue')}
               </button>
             )}
           </div>
@@ -748,9 +754,9 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         return (
           <div className="text-center py-8">
             <div className="loading-spinner-glass mx-auto mb-5" />
-            <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--ink)' }}>Reading Your ID</h2>
-            <p className="text-sm" style={{ color: 'var(--mid)' }}>Extracting information from the front of your document...</p>
-            <p className="mono" style={{ fontSize: 11, marginTop: 8, color: 'var(--soft)', letterSpacing: '0.04em' }}>Please don't close this window</p>
+            <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--ink)' }}>{t('desktop.scanning.title')}</h2>
+            <p className="text-sm" style={{ color: 'var(--mid)' }}>{t('desktop.scanning.body')}</p>
+            <p className="mono" style={{ fontSize: 11, marginTop: 8, color: 'var(--soft)', letterSpacing: '0.04em' }}>{t('desktop.scanning.hint')}</p>
           </div>
         );
 
@@ -759,13 +765,13 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         return (
           <div className="space-y-5">
             <div className="text-center">
-              <h2 className="text-xl font-semibold mb-1" style={{ color: 'var(--ink)' }}>Upload Back of ID</h2>
-              <p className="text-sm" style={{ color: 'var(--mid)' }}>We need both sides to cross-validate your identity</p>
+              <h2 className="text-xl font-semibold mb-1" style={{ color: 'var(--ink)' }}>{t('desktop.back.title')}</h2>
+              <p className="text-sm" style={{ color: 'var(--mid)' }}>{t('desktop.back.body')}</p>
             </div>
 
             {renderOCRSummary()}
 
-            {renderFileArea('back-upload', backPreviewUrl, handleBackFileSelect, 'Upload Back of ID')}
+            {renderFileArea('back-upload', backPreviewUrl, handleBackFileSelect, t('desktop.upload.ctaBack'))}
 
             {backFile && (
               <button
@@ -777,9 +783,9 @@ const EndUserVerification: React.FC<VerificationProps> = ({
                 {isLoading ? (
                   <span className="flex items-center justify-center gap-2">
                     <div className="loading-spinner" style={{ width: 16, height: 16 }} />
-                    Uploading...
+                    {t('common.uploading')}
                   </span>
-                ) : 'Continue'}
+                ) : t('common.continue')}
               </button>
             )}
           </div>
@@ -790,12 +796,12 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         return (
           <div className="text-center py-8">
             <div className="loading-spinner-glass mx-auto mb-5" />
-            <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--ink)' }}>Verifying Your Documents</h2>
-            <p className="text-sm" style={{ color: 'var(--mid)' }}>Cross-checking the front and back of your ID...</p>
+            <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--ink)' }}>{t('desktop.crossCheck.title')}</h2>
+            <p className="text-sm" style={{ color: 'var(--mid)' }}>{t('desktop.crossCheck.body')}</p>
             <ul className="checklist" style={{ marginTop: 16, maxWidth: 240, marginLeft: 'auto', marginRight: 'auto' }}>
-              <li><span className="dot">--</span><span>Barcode / QR scanning</span></li>
-              <li><span className="dot">--</span><span>Data cross-validation</span></li>
-              <li style={{ borderBottom: 'none' }}><span className="dot">--</span><span>Authenticity check</span></li>
+              <li><span className="dot">--</span><span>{t('desktop.crossCheck.item1')}</span></li>
+              <li><span className="dot">--</span><span>{t('desktop.crossCheck.item2')}</span></li>
+              <li style={{ borderBottom: 'none' }}><span className="dot">--</span><span>{t('desktop.crossCheck.item3')}</span></li>
             </ul>
           </div>
         );
@@ -820,9 +826,9 @@ const EndUserVerification: React.FC<VerificationProps> = ({
       case 65:
         return (
           <div className="text-center max-w-sm mx-auto space-y-4">
-            <h2 className="text-xl font-semibold" style={{ color: 'var(--ink)' }}>Speaker Verification</h2>
+            <h2 className="text-xl font-semibold" style={{ color: 'var(--ink)' }}>{t('voice.title')}</h2>
             <p className="text-sm" style={{ color: 'var(--mid)' }}>
-              Speak the digits shown below into your microphone.
+              {t('voice.subtitle')}
             </p>
 
             {/* Microphone icon */}
@@ -844,14 +850,14 @@ const EndUserVerification: React.FC<VerificationProps> = ({
             {voiceChallengeDigits && (voiceExpiresIn === null || voiceExpiresIn > 0) && (
               <div style={{ padding: 16, border: '1px solid var(--border, #ddd)', borderRadius: 8, textAlign: 'center' }}>
                 <div style={{ fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--mid)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  Speak these digits
+                  {t('voice.speakDigits')}
                 </div>
                 <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '0.2em', color: 'var(--ink)' }}>
                   {voiceChallengeDigits}
                 </div>
                 {voiceExpiresIn !== null && (
                   <div style={{ fontSize: 11, fontFamily: 'var(--mono)', color: voiceExpiresIn < 30 ? '#ef4444' : 'var(--mid)', marginTop: 6 }}>
-                    Expires in {voiceExpiresIn}s
+                    {t('voice.expiresIn', { seconds: voiceExpiresIn })}
                   </div>
                 )}
               </div>
@@ -859,34 +865,34 @@ const EndUserVerification: React.FC<VerificationProps> = ({
 
             {voiceIsRecording && (
               <p style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--accent, #22d3ee)' }}>
-                Recording: {voiceRecordingDuration}s
+                {t('voice.recording', { seconds: voiceRecordingDuration })}
               </p>
             )}
             {voiceHasRecording && !voiceIsRecording && !isLoading && (
               <p style={{ fontFamily: 'var(--mono)', fontSize: 12, color: '#22c55e' }}>
-                Recording captured ({voiceRecordingDuration}s)
+                {t('voice.capturedLong', { seconds: voiceRecordingDuration })}
               </p>
             )}
 
             <div className="space-y-2">
               {!voiceChallengeDigits && !isLoading && (
                 <button className="btn-primary w-full" onClick={handleVoiceChallenge} disabled={isLoading}>
-                  Get Challenge Digits
+                  {t('voice.getChallengeDigits')}
                 </button>
               )}
               {voiceChallengeDigits && !voiceIsRecording && !voiceHasRecording && (voiceExpiresIn === null || voiceExpiresIn > 0) && (
                 <button className="btn-primary w-full" onClick={handleVoiceStartRecording}>
-                  Start Recording
+                  {t('voice.startRecording')}
                 </button>
               )}
               {voiceIsRecording && (
                 <button className="btn-primary w-full" onClick={handleVoiceStopRecording}>
-                  Stop Recording
+                  {t('voice.stopRecording')}
                 </button>
               )}
               {voiceHasRecording && !voiceIsRecording && !isLoading && (
                 <button className="btn-primary w-full" onClick={handleVoiceSubmit}>
-                  Submit Voice Capture
+                  {t('voice.submitCapture')}
                 </button>
               )}
               {isLoading && (
@@ -900,13 +906,13 @@ const EndUserVerification: React.FC<VerificationProps> = ({
               <div className="space-y-2">
                 <p style={{ fontSize: 12, color: '#ef4444', fontFamily: 'var(--mono)' }}>{voiceStepError}</p>
                 <button className="btn-primary w-full" onClick={resetVoiceState}>
-                  Try Again
+                  {t('common.tryAgain')}
                 </button>
               </div>
             )}
             {voiceChallengeDigits && voiceExpiresIn !== null && voiceExpiresIn <= 0 && !voiceStepError && (
               <button className="btn-primary w-full" onClick={() => { resetVoiceState(); handleVoiceChallenge(); }}>
-                Request New Challenge
+                {t('voice.requestNew')}
               </button>
             )}
           </div>
@@ -919,8 +925,8 @@ const EndUserVerification: React.FC<VerificationProps> = ({
           return (
             <div className="text-center py-8">
               <div className="loading-spinner-glass mx-auto mb-5" />
-              <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--ink)' }}>Processing Verification</h2>
-              <p className="text-sm" style={{ color: 'var(--mid)' }}>Analyzing your live photo...</p>
+              <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--ink)' }}>{t('desktop.result.processingTitle')}</h2>
+              <p className="text-sm" style={{ color: 'var(--mid)' }}>{t('desktop.result.processingBody')}</p>
             </div>
           );
         }
@@ -936,31 +942,31 @@ const EndUserVerification: React.FC<VerificationProps> = ({
               display: 'inline-flex', padding: '8px 16px', margin: '0 auto',
               fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
             }}>
-              {isVerified ? 'VERIFIED' : isFailed ? 'FAILED' : 'REVIEW'}
+              {isVerified ? t('badge.verified') : isFailed ? t('badge.failed') : t('badge.review')}
             </div>
 
             <div>
               <h2 className="text-xl font-semibold" style={{ color: 'var(--ink)' }}>
                 {isAgeOnly
-                  ? isVerified ? 'Age Verified' : 'Age Verification Failed'
-                  : isVerified ? 'Identity Verified' : isFailed ? 'Verification Failed' : 'Under Review'}
+                  ? isVerified ? t('age.verified') : t('age.failedTitle')
+                  : isVerified ? t('desktop.result.identityVerified') : isFailed ? t('desktop.result.failed') : t('desktop.result.underReview')}
               </h2>
               <p className="text-sm mt-1" style={{ color: 'var(--mid)' }}>
                 {isAgeOnly
                   ? isVerified
-                    ? `You meet the minimum age requirement of ${finalResult.age_verification?.age_threshold ?? ageThreshold ?? 18}.`
-                    : finalResult.message || finalResult.rejection_detail || 'Age verification could not be completed.'
+                    ? t('age.meetsRequirement', { age: finalResult.age_verification?.age_threshold ?? ageThreshold ?? 18 })
+                    : finalResult.message || finalResult.rejection_detail || t('age.couldNotComplete')
                   : isVerified
-                  ? 'Your identity has been successfully verified.'
+                  ? t('desktop.result.successBody')
                   : isFailed
-                  ? finalResult.failure_reason || 'Verification could not be completed. Please try again.'
-                  : 'Your verification is under manual review. You will be notified of the result.'}
+                  ? finalResult.failure_reason || t('desktop.result.failedBody')
+                  : t('desktop.result.reviewBody')}
               </p>
             </div>
 
             {/* Score details */}
             <div className="result-grid text-left">
-              <div>Status</div>
+              <div>{t('field.status')}</div>
               <div>
                 <span className={isVerified ? 'badge-success' : isFailed ? 'badge-error' : 'badge-warning'}
                   style={{ textTransform: 'capitalize' }}>{status}</span>
@@ -968,26 +974,26 @@ const EndUserVerification: React.FC<VerificationProps> = ({
               {/* Age verification */}
               {finalResult.age_verification && (
                 <>
-                  <div>Age Check</div>
+                  <div>{t('field.ageCheck')}</div>
                   <div>
                     <span className={finalResult.age_verification.is_of_age ? 'badge-success' : 'badge-error'}>
-                      {finalResult.age_verification.is_of_age ? 'Passed' : 'Failed'}
+                      {finalResult.age_verification.is_of_age ? t('field.passed') : t('field.failed')}
                     </span>
                   </div>
-                  <div>Minimum Age</div>
+                  <div>{t('field.minimumAge')}</div>
                   <div style={{ color: 'var(--ink)' }}>{finalResult.age_verification.age_threshold}+</div>
                 </>
               )}
               {/* Cross-validation: v2 uses overall_score, fall back to weighted_score / v1 flat field */}
               {(finalResult.cross_validation_results?.overall_score ?? finalResult.cross_validation_results?.weighted_score ?? finalResult.cross_validation_score) != null && (
                 <>
-                  <div>Doc Cross-Check</div>
+                  <div>{t('field.docCrossCheck')}</div>
                   <div style={{ color: 'var(--ink)' }}>{Math.round((finalResult.cross_validation_results?.overall_score ?? finalResult.cross_validation_results?.weighted_score ?? finalResult.cross_validation_score) * 100)}%</div>
                 </>
               )}
               {finalResult.cross_validation_results?.verdict && (
                 <>
-                  <div>Verdict</div>
+                  <div>{t('field.verdict')}</div>
                   <div>
                     <span className={finalResult.cross_validation_results.verdict === 'PASS' ? 'badge-success' : finalResult.cross_validation_results.verdict === 'REJECT' ? 'badge-error' : 'badge-warning'}>
                       {finalResult.cross_validation_results.verdict}
@@ -998,20 +1004,20 @@ const EndUserVerification: React.FC<VerificationProps> = ({
               {/* Face match: v2 uses similarity_score, fall back to score / v1 flat field */}
               {(finalResult.face_match_results?.similarity_score ?? finalResult.face_match_results?.score ?? finalResult.face_match_score) != null && (
                 <>
-                  <div>Face Match</div>
+                  <div>{t('field.faceMatch')}</div>
                   <div style={{ color: 'var(--ink)' }}>{Math.round((finalResult.face_match_results?.similarity_score ?? finalResult.face_match_results?.score ?? finalResult.face_match_score) * 100)}%</div>
                 </>
               )}
               {/* Liveness: v2 uses liveness_results.score (not liveness_score), fall back to v1 fields */}
               {(finalResult.liveness_results?.score ?? finalResult.liveness_results?.liveness_score ?? finalResult.liveness_score) != null && (
                 <>
-                  <div>Liveness</div>
+                  <div>{t('field.liveness')}</div>
                   <div style={{ color: 'var(--ink)' }}>
                     {Math.round((finalResult.liveness_results?.score ?? finalResult.liveness_results?.liveness_score ?? finalResult.liveness_score) * 100)}%
                     {finalResult.liveness_results?.passed != null && (
                       <span className={`ml-2 ${finalResult.liveness_results.passed ? 'badge-success' : 'badge-error'}`}
                         style={{ fontSize: 10, padding: '1px 6px' }}>
-                        {finalResult.liveness_results.passed ? 'PASS' : 'FAIL'}
+                        {finalResult.liveness_results.passed ? t('badge.pass') : t('badge.fail')}
                       </span>
                     )}
                   </div>
@@ -1020,10 +1026,10 @@ const EndUserVerification: React.FC<VerificationProps> = ({
               {/* AML Screening */}
               {finalResult.aml_screening && (
                 <>
-                  <div>AML Screening</div>
+                  <div>{t('field.amlScreening')}</div>
                   <div>
                     <span className={finalResult.aml_screening.risk_level === 'clear' ? 'badge-success' : finalResult.aml_screening.match_found ? 'badge-error' : 'badge-warning'}>
-                      {finalResult.aml_screening.risk_level === 'clear' ? 'Clear' : finalResult.aml_screening.risk_level?.replace('_', ' ')}
+                      {finalResult.aml_screening.risk_level === 'clear' ? t('field.clear') : finalResult.aml_screening.risk_level?.replace('_', ' ')}
                     </span>
                   </div>
                 </>
@@ -1031,7 +1037,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
               {/* Risk Score */}
               {finalResult.risk_score && (
                 <>
-                  <div>Risk Score</div>
+                  <div>{t('field.riskScore')}</div>
                   <div>
                     <span className={finalResult.risk_score.risk_level === 'low' ? 'badge-success' : finalResult.risk_score.risk_level === 'medium' ? 'badge-warning' : 'badge-error'}>
                       {finalResult.risk_score.overall_score}/100 ({finalResult.risk_score.risk_level})
@@ -1041,18 +1047,18 @@ const EndUserVerification: React.FC<VerificationProps> = ({
               )}
               {finalResult.confidence_score != null && (
                 <>
-                  <div>Confidence</div>
+                  <div>{t('field.confidence')}</div>
                   <div style={{ color: 'var(--ink)' }}>{Math.round(finalResult.confidence_score * 100)}%</div>
                 </>
               )}
               {/* Rejection details */}
               {finalResult.rejection_reason && (
                 <>
-                  <div>Rejection</div>
+                  <div>{t('field.rejection')}</div>
                   <div className="mono" style={{ fontSize: 11, color: 'oklch(0.68 0.17 25)' }}>{finalResult.rejection_reason}</div>
                   {finalResult.rejection_detail && (
                     <>
-                      <div>Detail</div>
+                      <div>{t('field.detail')}</div>
                       <div style={{ color: 'var(--mid)', fontSize: 11 }}>{finalResult.rejection_detail}</div>
                     </>
                   )}
@@ -1067,15 +1073,15 @@ const EndUserVerification: React.FC<VerificationProps> = ({
                 className="btn-accent w-full disabled:opacity-50"
                 style={{ padding: '12px 24px', justifyContent: 'center' }}
               >
-                {retryProcessing ? 'Restarting...' : 'Try Again'}
+                {retryProcessing ? t('common.restarting') : t('common.tryAgain')}
               </button>
             )}
             {isFailed && finalResult.retry_available === false && (
-              <p className="mono" style={{ fontSize: 11, color: 'oklch(0.68 0.17 25)', letterSpacing: '0.04em' }}>Maximum retry attempts reached.</p>
+              <p className="mono" style={{ fontSize: 11, color: 'oklch(0.68 0.17 25)', letterSpacing: '0.04em' }}>{t('common.maxRetries')}</p>
             )}
 
             {(redirectUrl || onRedirect) && (
-              <p className="mono" style={{ fontSize: 11, color: 'var(--soft)', letterSpacing: '0.04em' }}>Redirecting in 3 seconds...</p>
+              <p className="mono" style={{ fontSize: 11, color: 'var(--soft)', letterSpacing: '0.04em' }}>{t('common.redirecting')}</p>
             )}
           </div>
         );
@@ -1094,21 +1100,21 @@ const EndUserVerification: React.FC<VerificationProps> = ({
           <div className="p-8">
             {showMobileChoice ? (
               <div className="py-4">
-                <h2 className="text-xl font-bold text-center mb-1" style={{ color: 'var(--ink)' }}>How would you like to verify?</h2>
-                <p className="text-sm text-center mb-6" style={{ color: 'var(--mid)' }}>Complete on this device or scan a QR code to use your phone</p>
+                <h2 className="text-xl font-bold text-center mb-1" style={{ color: 'var(--ink)' }}>{t('desktop.choice.title')}</h2>
+                <p className="text-sm text-center mb-6" style={{ color: 'var(--mid)' }}>{t('desktop.choice.subtitle')}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="card p-5 flex flex-col items-center text-center gap-3">
-                    <div className="mono" style={{ fontSize: 13, color: 'var(--mid)', letterSpacing: '0.04em' }}>DESKTOP</div>
+                    <div className="mono" style={{ fontSize: 13, color: 'var(--mid)', letterSpacing: '0.04em' }}>{t('desktop.choice.desktopEyebrow')}</div>
                     <div>
-                      <h3 className="font-semibold" style={{ color: 'var(--ink)' }}>Start Here</h3>
-                      <p className="text-sm mt-1" style={{ color: 'var(--mid)' }}>Use your webcam and upload documents on this device</p>
+                      <h3 className="font-semibold" style={{ color: 'var(--ink)' }}>{t('desktop.choice.startHere')}</h3>
+                      <p className="text-sm mt-1" style={{ color: 'var(--mid)' }}>{t('desktop.choice.startHereBody')}</p>
                     </div>
                     <button
                       onClick={() => { setShowMobileChoice(false); startVerification(); }}
                       className="btn-accent mt-1 w-full"
                       style={{ padding: '10px 16px', justifyContent: 'center' }}
                     >
-                      Start on This Device
+                      {t('desktop.choice.startCta')}
                     </button>
                   </div>
 

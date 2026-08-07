@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { API_BASE_URL } from '../../config/api';
 import { ActiveLivenessCapture } from '../liveness/ActiveLivenessCapture';
 import type { LivenessMetadata } from '../../hooks/useActiveLiveness';
+import { useT } from '../../i18n';
 
 declare global {
   interface Window { cv: any; }
@@ -24,6 +25,7 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
   onError,
   theme: _theme = 'light',
 }) => {
+  const t = useT();
   const authHeader: Record<string, string> = sessionToken
     ? { 'X-Session-Token': sessionToken }
     : { 'X-API-Key': apiKey };
@@ -77,7 +79,7 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
     setError('');
     setLoading(true);
     try {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera not supported in this browser');
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error(t('widget.error.notSupported'));
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
         audio: false,
@@ -94,10 +96,10 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
     } catch (err: any) {
       if (!mountedRef.current) return;
       const msg =
-        err.name === 'NotAllowedError' ? 'Camera permission denied. Please enable camera access.' :
-        err.name === 'NotFoundError' ? 'No camera found.' :
-        err.name === 'NotReadableError' ? 'Camera is already in use by another app.' :
-        `Camera error: ${err.message}`;
+        err.name === 'NotAllowedError' ? t('widget.error.permissionDenied') :
+        err.name === 'NotFoundError' ? t('widget.error.notFound') :
+        err.name === 'NotReadableError' ? t('widget.error.inUse') :
+        t('widget.error.generic', { message: err.message });
       setCameraState('error');
       setError(msg);
     } finally {
@@ -193,7 +195,7 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2 * Math.PI); ctx.stroke();
     ctx.font = '14px sans-serif'; ctx.textAlign = 'center';
     ctx.fillStyle = detected ? '#10B981' : '#EF4444';
-    ctx.fillText(detected ? 'Face Detected' : 'Position Face', cx, cy + r + 25);
+    ctx.fillText(detected ? t('widget.overlay.faceDetected') : t('widget.overlay.positionFace'), cx, cy + r + 25);
   };
 
   const smoothFaceState = (detected: boolean) => {
@@ -206,9 +208,9 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
 
   const startChallenge = () => {
     if (!faceDetected || livenessScore < 0.4 || faceStability < 0.5) {
-      setError(!faceDetected ? 'No face detected. Position your face in the frame.' :
-               livenessScore < 0.4 ? 'Ensure good lighting and your face is clearly visible.' :
-               'Hold your face steady in the frame.');
+      setError(!faceDetected ? t('widget.error.noFace') :
+               livenessScore < 0.4 ? t('widget.error.lighting') :
+               t('widget.error.steady'));
       return;
     }
     setError('');
@@ -224,7 +226,7 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
         }
         if (!faceDetected || livenessScore < 0.4 || faceStability < 0.5) {
           clearInterval(timer);
-          setError('Face lost during countdown. Please try again.');
+          setError(t('widget.error.faceLost'));
           setChallengeState('waiting');
           return null;
         }
@@ -236,7 +238,7 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
   const performCapture = async () => {
     const canvas = canvasRef.current;
     if (!canvas || (!apiKey && !sessionToken) || !verificationId) {
-      const msg = 'Missing required capture data.';
+      const msg = t('widget.error.missingData');
       setError(msg);
       setChallengeState('waiting');
       onError?.(msg);
@@ -247,7 +249,7 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
     try {
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(
-          (b) => { if (b) resolve(b); else reject(new Error('Failed to capture image')); },
+          (b) => { if (b) resolve(b); else reject(new Error(t('widget.error.captureFailed'))); },
           'image/jpeg', 0.8,
         );
       });
@@ -262,8 +264,8 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Live capture failed' }));
-        throw new Error(err.message || 'Live capture failed');
+        const err = await res.json().catch(() => ({ message: t('widget.error.captureFailed') }));
+        throw new Error(err.message || t('widget.error.captureFailed'));
       }
 
       cleanup();
@@ -272,12 +274,12 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
     } catch (err: any) {
       if (!mountedRef.current) return;
       const msg = err.name === 'AbortError'
-        ? 'Request timed out. Check your connection and try again.'
-        : err.message || 'Capture failed. Please try again.';
+        ? t('widget.error.timedOut')
+        : err.message || t('widget.error.retryFailed');
       setError(msg);
       setChallengeState('waiting');
       if (captureAttempts >= 2) {
-        onError?.('Maximum capture attempts reached. Please refresh and try again.');
+        onError?.(t('widget.error.maxAttempts'));
       }
     } finally {
       if (mountedRef.current) setLoading(false);
@@ -313,8 +315,8 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: 'Live capture failed' }));
-        throw new Error(err.message || 'Live capture failed');
+        const err = await res.json().catch(() => ({ message: t('widget.error.captureFailed') }));
+        throw new Error(err.message || t('widget.error.captureFailed'));
       }
 
       cleanup();
@@ -322,8 +324,8 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
       onComplete();
     } catch (err: any) {
       if (mountedRef.current) {
-        setError(err.message || 'Liveness verification failed');
-        onError?.(err.message || 'Liveness verification failed');
+        setError(err.message || t('widget.error.livenessFailed'));
+        onError?.(err.message || t('widget.error.livenessFailed'));
       }
     } finally {
       if (mountedRef.current) setLoading(false);
@@ -336,10 +338,10 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
     return (
       <div className="text-center py-6">
         <div className="badge-success" style={{ margin: '0 auto 16px', display: 'inline-flex', padding: '8px 16px', fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-          CAPTURED
+          {t('badge.captured')}
         </div>
-        <h3 className="text-lg font-semibold" style={{ color: 'var(--ink)' }}>Photo Captured</h3>
-        <p className="text-sm mt-1" style={{ color: 'var(--mid)' }}>Processing your verification...</p>
+        <h3 className="text-lg font-semibold" style={{ color: 'var(--ink)' }}>{t('widget.capturedTitle')}</h3>
+        <p className="text-sm mt-1" style={{ color: 'var(--mid)' }}>{t('widget.capturedBody')}</p>
         <div className="loading-spinner-glass mx-auto mt-4" />
       </div>
     );
@@ -350,12 +352,12 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
     return (
       <div className="space-y-4">
         <div className="text-center">
-          <h2 className="text-xl font-semibold mb-1" style={{ color: 'var(--ink)' }}>Live Photo Capture</h2>
-          <p className="text-sm" style={{ color: 'var(--mid)' }}>Follow the on-screen instructions to verify your identity</p>
+          <h2 className="text-xl font-semibold mb-1" style={{ color: 'var(--ink)' }}>{t('widget.title')}</h2>
+          <p className="text-sm" style={{ color: 'var(--mid)' }}>{t('widget.subtitleActive')}</p>
         </div>
         <ActiveLivenessCapture
           onComplete={handleActiveLivenessComplete}
-          onCancel={() => onError?.('Live capture cancelled')}
+          onCancel={() => onError?.(t('widget.error.cancelled'))}
           onFallback={() => setUseFallbackCapture(true)}
         />
       </div>
@@ -366,8 +368,8 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
   return (
     <div className="space-y-4">
       <div className="text-center">
-        <h2 className="text-xl font-semibold mb-1" style={{ color: 'var(--ink)' }}>Live Photo Capture</h2>
-        <p className="text-sm" style={{ color: 'var(--mid)' }}>We need a live photo to verify your identity</p>
+        <h2 className="text-xl font-semibold mb-1" style={{ color: 'var(--ink)' }}>{t('widget.title')}</h2>
+        <p className="text-sm" style={{ color: 'var(--mid)' }}>{t('widget.subtitleFallback')}</p>
       </div>
 
       {/* Camera area */}
@@ -384,10 +386,10 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
 
         {cameraState === 'prompt' && (
           <div className="p-8 text-center">
-            <div className="mono" style={{ fontSize: 13, color: 'var(--mid)', letterSpacing: '0.04em', marginBottom: 16 }}>CAMERA</div>
-            <h3 className="font-semibold mb-2" style={{ color: 'var(--ink)' }}>Camera Access Required</h3>
+            <div className="mono" style={{ fontSize: 13, color: 'var(--mid)', letterSpacing: '0.04em', marginBottom: 16 }}>{t('widget.cameraEyebrow')}</div>
+            <h3 className="font-semibold mb-2" style={{ color: 'var(--ink)' }}>{t('widget.accessTitle')}</h3>
             <p className="text-sm mb-5" style={{ color: 'var(--mid)' }}>
-              We need your camera to capture a live photo for identity verification.
+              {t('widget.accessBody')}
             </p>
             <button
               onClick={initializeCamera}
@@ -395,7 +397,7 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
               className="btn-accent disabled:opacity-50"
               style={{ padding: '12px 24px' }}
             >
-              {!opencvReady ? 'Loading...' : loading ? 'Starting Camera...' : 'Enable Camera'}
+              {!opencvReady ? t('common.loading') : loading ? t('widget.startingCamera') : t('common.enableCamera')}
             </button>
           </div>
         )}
@@ -403,17 +405,17 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
         {cameraState === 'initializing' && (
           <div className="p-8 text-center">
             <div className="loading-spinner-glass mx-auto mb-4" />
-            <p className="text-sm" style={{ color: 'var(--mid)' }}>Starting camera...</p>
+            <p className="text-sm" style={{ color: 'var(--mid)' }}>{t('widget.startingCameraBody')}</p>
           </div>
         )}
 
         {cameraState === 'error' && (
           <div className="p-8 text-center">
-            <div className="badge-error" style={{ display: 'inline-flex', marginBottom: 12, fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>ERROR</div>
-            <h3 className="font-semibold mb-2" style={{ color: 'var(--ink)' }}>Camera Failed</h3>
+            <div className="badge-error" style={{ display: 'inline-flex', marginBottom: 12, fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{t('badge.error')}</div>
+            <h3 className="font-semibold mb-2" style={{ color: 'var(--ink)' }}>{t('widget.cameraFailed')}</h3>
             <p className="text-sm mb-4" style={{ color: 'var(--mid)' }}>{error}</p>
             <button onClick={retry} className="btn-accent" style={{ padding: '10px 20px' }}>
-              Try Again
+              {t('common.tryAgain')}
             </button>
           </div>
         )}
@@ -425,8 +427,8 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
           style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', width: '100%' }}>
           <span className="mono" style={{ fontSize: 11 }}>
             {faceDetected
-              ? `Face detected / Liveness ${Math.round(livenessScore * 100)}% / Stability ${Math.round(faceStability * 100)}%`
-              : 'Position your face in the center of the frame'}
+              ? t('widget.faceDetectedStats', { liveness: Math.round(livenessScore * 100), stability: Math.round(faceStability * 100) })
+              : t('widget.positionFace')}
           </span>
         </div>
       )}
@@ -435,14 +437,14 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
       {countdown !== null && (
         <div className="text-center">
           <div className="mono" style={{ fontSize: 48, fontWeight: 700, color: 'var(--accent)' }}>{countdown}</div>
-          <p className="text-sm mt-1" style={{ color: 'var(--mid)' }}>Hold still...</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--mid)' }}>{t('widget.holdStill')}</p>
         </div>
       )}
 
       {/* Error */}
       {error && cameraState !== 'error' && (
         <div className="badge-error" style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', width: '100%' }}>
-          <span className="mono" style={{ fontSize: 11, flexShrink: 0 }}>ERR</span>
+          <span className="mono" style={{ fontSize: 11, flexShrink: 0 }}>{t('badge.err')}</span>
           <span style={{ fontSize: 13 }}>{error}</span>
         </div>
       )}
@@ -458,20 +460,20 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
               style={{ padding: '14px 16px', justifyContent: 'center' }}
             >
               {loading ? (
-                <><div className="loading-spinner" style={{ width: 16, height: 16 }} /> Processing...</>
+                <><div className="loading-spinner" style={{ width: 16, height: 16 }} /> {t('common.processing')}</>
               ) : !faceDetected ? (
-                'Position Your Face First'
+                t('widget.positionFirst')
               ) : livenessScore < 0.4 || faceStability < 0.5 ? (
-                'Improve Lighting & Hold Steady'
+                t('widget.improveLighting')
               ) : (
-                'Capture Photo'
+                t('widget.capturePhoto')
               )}
             </button>
           )}
 
           {challengeState === 'active' && (
             <div className="text-center py-3 text-sm font-medium" style={{ color: 'var(--mid)' }}>
-              Look directly at the camera and blink twice...
+              {t('widget.blinkTwice')}
             </div>
           )}
 
@@ -480,16 +482,16 @@ export const LiveCaptureWidget: React.FC<LiveCaptureWidgetProps> = ({
             className="btn-outline w-full"
             style={{ padding: '10px 16px', justifyContent: 'center' }}
           >
-            Restart Camera
+            {t('common.restartCamera')}
           </button>
         </div>
       )}
 
       {/* Instructions */}
       <ul className="checklist" style={{ fontSize: 12 }}>
-        <li><span className="dot">--</span><span>Ensure good lighting -- avoid backlighting</span></li>
-        <li><span className="dot">--</span><span>Center your face in the frame and hold still</span></li>
-        <li style={{ borderBottom: 'none' }}><span className="dot">--</span><span>Wait for the "Face detected" indicator before capturing</span></li>
+        <li><span className="dot">--</span><span>{t('widget.tip1')}</span></li>
+        <li><span className="dot">--</span><span>{t('widget.tip2')}</span></li>
+        <li style={{ borderBottom: 'none' }}><span className="dot">--</span><span>{t('widget.tip3')}</span></li>
       </ul>
     </div>
   );

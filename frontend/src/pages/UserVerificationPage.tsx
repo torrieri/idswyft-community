@@ -8,6 +8,8 @@ import { C, injectFonts } from '../theme';
 import { API_BASE_URL, buildApiUrl, shouldUseSandbox } from '../config/api';
 import { sanitizeRedirectUrl, buildRedirectUrl } from '../utils/redirect';
 import { PB_FONT_MAP } from '../components/verification/theme';
+import { useT, useLocale, appendLocaleParam } from '../i18n';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import type { PageBuilderConfig, PageBranding } from '../components/verification/types';
 
 // ─── State machine ─────────────────────────────────────────────────
@@ -19,6 +21,8 @@ import type { PageBuilderConfig, PageBranding } from '../components/verification
 type Phase = 'choice' | 'mobile-qr' | 'desktop' | 'address' | 'completed';
 
 const UserVerificationPage: React.FC = () => {
+  const t = useT();
+  const { locale } = useLocale();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { slug } = useParams<{ slug?: string }>();
@@ -97,8 +101,8 @@ const UserVerificationPage: React.FC = () => {
       .catch((err) => {
         setSessionError(
           err.message?.includes('410')
-            ? 'This verification link has expired. Please request a new one.'
-            : 'Invalid or expired verification link.'
+            ? t('session.expired')
+            : t('session.invalid')
         );
         setSessionReady(true);
       });
@@ -167,7 +171,9 @@ const UserVerificationPage: React.FC = () => {
         if (effectiveAgeThreshold) url += `&age_threshold=${effectiveAgeThreshold}`;
         if (redirectUrl) url += `&redirect_url=${encodeURIComponent(redirectUrl)}`;
 
-        navigate(url, { replace: true });
+        // Carry the active locale so /verify/mobile opens in the same language,
+        // including when the developer forced it with ?lang= on this page.
+        navigate(appendLocaleParam(url, locale), { replace: true });
       } catch {
         // Fallback: render verification inline on this device
         setMobileRedirecting(false);
@@ -180,7 +186,7 @@ const UserVerificationPage: React.FC = () => {
   if (!sessionReady) {
     return (
       <div style={{ background: 'var(--paper)', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ fontFamily: C.sans, color: 'var(--mid)', fontSize: '0.9rem' }}>Loading...</div>
+        <div style={{ fontFamily: C.sans, color: 'var(--mid)', fontSize: '0.9rem' }}>{t('common.loading')}</div>
       </div>
     );
   }
@@ -189,7 +195,7 @@ const UserVerificationPage: React.FC = () => {
   if (mobileRedirecting) {
     return (
       <div style={{ background: 'var(--paper)', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ fontFamily: C.sans, color: 'var(--mid)', fontSize: '0.9rem' }}>Preparing your session...</div>
+        <div style={{ fontFamily: C.sans, color: 'var(--mid)', fontSize: '0.9rem' }}>{t('common.preparingSession')}</div>
       </div>
     );
   }
@@ -206,10 +212,10 @@ const UserVerificationPage: React.FC = () => {
             fontFamily: C.mono, fontSize: 13, fontWeight: 600, letterSpacing: '0.04em',
             background: C.redDim, border: `1px solid ${C.red}`, color: C.red,
           }}>
-            ERR
+            {t('badge.err')}
           </div>
           <h1 style={{ fontFamily: C.sans, fontSize: '1.3rem', fontWeight: 600, color: 'var(--ink)', margin: '0 0 8px' }}>
-            Verification Unavailable
+            {t('session.unavailableTitle')}
           </h1>
           <p style={{ fontFamily: C.sans, fontSize: '0.88rem', color: 'var(--mid)', margin: 0 }}>
             {sessionError}
@@ -327,7 +333,7 @@ const UserVerificationPage: React.FC = () => {
           }}
         >
           <ArrowLeftIcon style={{ width: 14, height: 14 }} />
-          {phase === 'choice' ? 'Back' : 'Back to options'}
+          {phase === 'choice' ? t('common.back') : t('common.backToOptions')}
         </button>
       </div>
     ) : null;
@@ -343,21 +349,20 @@ const UserVerificationPage: React.FC = () => {
       gap: 10,
       alignItems: 'flex-start',
     }}>
-      <span style={{ fontFamily: C.mono, fontSize: '0.7rem', fontWeight: 600, color: 'var(--flag)', flexShrink: 0, marginTop: 2 }}>WARN</span>
+      <span style={{ fontFamily: C.mono, fontSize: '0.7rem', fontWeight: 600, color: 'var(--flag)', flexShrink: 0, marginTop: 2 }}>{t('badge.warn')}</span>
       <div>
         <p style={{
           fontFamily: C.sans, fontSize: '0.82rem', fontWeight: 600, color: 'var(--flag)',
           margin: '0 0 4px',
         }}>
-          Preview Mode
+          {t('preview.title')}
         </p>
         <p style={{
           fontFamily: C.sans, fontSize: '0.78rem', color: 'var(--mid)',
           margin: '0 0 8px', lineHeight: 1.5,
         }}>
-          This page requires a <code style={{ fontFamily: C.mono, fontSize: '0.72rem', color: 'var(--accent-ink)' }}>session</code> token
-          (from <code style={{ fontFamily: C.mono, fontSize: '0.72rem', color: 'var(--accent-ink)' }}>POST /api/v2/verify/initialize</code>)
-          to start a real verification. You're seeing a read-only preview.
+          {t('preview.body', { token: 'session', endpoint: 'POST /api/v2/verify/initialize' })}{' '}
+          {t('preview.readonly')}
         </p>
         <div style={{
           fontFamily: C.mono, fontSize: '0.68rem', color: 'var(--soft)',
@@ -427,15 +432,14 @@ const UserVerificationPage: React.FC = () => {
     // Age-only verification has page-specific copy (age threshold) that
     // doesn't generalize to the shared CompletionScreen — kept inline.
     if (verificationMode === 'age_only') {
-      const statusLabel = verificationResult?.status === 'verified' || verificationResult?.status === 'completed'
-        ? 'Verified' : verificationResult?.status === 'failed' ? 'Failed' : 'Under Review';
-      const isSuccess = statusLabel === 'Verified';
-      const isFailed = statusLabel === 'Failed';
+      const status = verificationResult?.status;
+      const isSuccess = status === 'verified' || status === 'completed';
+      const isFailed = status === 'failed';
       return (
         <div style={{ background: 'var(--paper)', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ maxWidth: 440, width: '100%', textAlign: 'center' }}>
             {branding?.logo_url ? (
-              <img src={branding.logo_url} alt={branding.company_name || 'Logo'} style={{ height: 36, margin: '0 auto 32px', objectFit: 'contain' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              <img src={branding.logo_url} alt={branding.company_name || t('common.logoAlt')} style={{ height: 36, margin: '0 auto 32px', objectFit: 'contain' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
             ) : (
               <img src="/idswyft-logo.png" alt="Idswyft" style={{ height: 36, margin: '0 auto 32px' }} />
             )}
@@ -443,44 +447,44 @@ const UserVerificationPage: React.FC = () => {
               margin: '0 auto 16px', display: 'inline-flex', padding: '8px 16px',
               fontFamily: C.mono, fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
             }}>
-              {isSuccess ? 'PASS' : isFailed ? 'FAIL' : 'REVIEW'}
+              {isSuccess ? t('badge.pass') : isFailed ? t('badge.fail') : t('badge.review')}
             </div>
             <h1 style={{ fontFamily: C.sans, fontSize: '1.4rem', fontWeight: 600, color: 'var(--ink)', margin: '16px 0 8px' }}>
-              {isSuccess ? 'Age Verified' : 'Age Verification Failed'}
+              {isSuccess ? t('age.verified') : t('age.failedTitle')}
             </h1>
             <p style={{ fontFamily: C.sans, fontSize: '0.88rem', color: 'var(--mid)', margin: '0 0 24px' }}>
               {isSuccess
-                ? `You meet the minimum age requirement of ${ageThreshold ?? 18}.`
-                : 'Age verification could not be completed.'}
+                ? t('age.meetsRequirement', { age: ageThreshold ?? 18 })
+                : t('age.couldNotComplete')}
             </p>
             {verificationResult && (
               <div className="result-grid" style={{ textAlign: 'left' }}>
                 {verificationResult.confidence_score != null && (
                   <>
-                    <div>Confidence</div>
+                    <div>{t('field.confidence')}</div>
                     <div style={{ color: 'var(--ink)', fontWeight: 600 }}>{Math.round(verificationResult.confidence_score * 100)}%</div>
                   </>
                 )}
                 {verificationResult.face_match_score != null && (
                   <>
-                    <div>Face Match</div>
+                    <div>{t('field.faceMatch')}</div>
                     <div style={{ color: 'var(--ink)', fontWeight: 600 }}>{Math.round(verificationResult.face_match_score * 100)}%</div>
                   </>
                 )}
                 {verificationResult.liveness_score != null && (
                   <>
-                    <div>Liveness</div>
+                    <div>{t('field.liveness')}</div>
                     <div style={{ color: 'var(--ink)', fontWeight: 600 }}>{Math.round(verificationResult.liveness_score * 100)}%</div>
                   </>
                 )}
               </div>
             )}
             <p style={{ fontFamily: C.mono, fontSize: '0.72rem', color: 'var(--soft)', marginTop: 24, letterSpacing: '0.04em' }}>
-              You can close this window.
+              {t('common.closeWindow')}
             </p>
             {hasCustomBranding && showPoweredBy && (
               <p style={{ fontFamily: C.mono, fontSize: '0.68rem', color: 'var(--soft)', marginTop: 12, letterSpacing: '0.04em' }}>
-                Powered by Idswyft
+                {t('common.poweredBy')}
               </p>
             )}
           </div>
@@ -504,13 +508,13 @@ const UserVerificationPage: React.FC = () => {
               margin: '0 auto 16px', display: 'inline-flex', padding: '6px 14px',
               fontFamily: C.mono, fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
             }}>
-              PASS
+              {t('badge.pass')}
             </div>
             <h1 style={{ fontFamily: C.sans, fontSize: '1.4rem', fontWeight: 600, color: 'var(--ink)', margin: '0 0 6px' }}>
-              Identity Verified
+              {t('address.title')}
             </h1>
             <p style={{ fontFamily: C.sans, fontSize: '0.88rem', color: 'var(--mid)', margin: '0 0 24px' }}>
-              Now upload a proof-of-address document to complete your verification.
+              {t('address.subtitle')}
             </p>
           </div>
 
@@ -518,26 +522,26 @@ const UserVerificationPage: React.FC = () => {
             <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
                 <label className="form-label">
-                  Document Type
+                  {t('docType.label')}
                 </label>
                 <select
                   value={addressDocType}
                   onChange={(e) => setAddressDocType(e.target.value)}
                   className="form-input"
                 >
-                  <option value="utility_bill">Utility Bill</option>
-                  <option value="bank_statement">Bank Statement</option>
-                  <option value="tax_document">Tax Document</option>
+                  <option value="utility_bill">{t('docType.utility_bill')}</option>
+                  <option value="bank_statement">{t('docType.bank_statement')}</option>
+                  <option value="tax_document">{t('docType.tax_document')}</option>
                 </select>
               </div>
 
               <label htmlFor="address-upload" className="file-upload-zone" style={{ display: 'block' }}>
                 <input type="file" accept="image/jpeg,image/png,application/pdf" onChange={handleAddressFileSelect} style={{ display: 'none' }} id="address-upload" />
                 <p style={{ fontFamily: C.sans, fontSize: '0.85rem', color: 'var(--mid)', margin: '0 0 4px' }}>
-                  {addressFile ? addressFile.name : 'Click to upload or drag and drop'}
+                  {addressFile ? addressFile.name : t('address.uploadPrompt')}
                 </p>
                 <p style={{ fontFamily: C.mono, fontSize: '0.72rem', color: 'var(--soft)', margin: 0 }}>
-                  {addressFile ? `${(addressFile.size / 1024 / 1024).toFixed(2)} MB` : 'JPEG, PNG, or PDF (max 10MB)'}
+                  {addressFile ? `${(addressFile.size / 1024 / 1024).toFixed(2)} MB` : t('address.uploadHint')}
                 </p>
               </label>
 
@@ -550,7 +554,7 @@ const UserVerificationPage: React.FC = () => {
                   cursor: !addressFile || addressUploading ? 'not-allowed' : 'pointer',
                 }}
               >
-                {addressUploading ? 'Processing...' : 'Verify Address'}
+                {addressUploading ? t('common.processing') : t('address.verifyCta')}
               </button>
 
               <button
@@ -561,7 +565,7 @@ const UserVerificationPage: React.FC = () => {
                   cursor: 'pointer',
                 }}
               >
-                Skip -- I'll do this later
+                {t('address.skip')}
               </button>
             </div>
           ) : (
@@ -570,19 +574,19 @@ const UserVerificationPage: React.FC = () => {
                 margin: '0 auto 12px', display: 'inline-flex', padding: '6px 14px',
                 fontFamily: C.mono, fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
               }}>
-                {addressResult.status === 'verified' ? 'PASS' : 'REVIEW'}
+                {addressResult.status === 'verified' ? t('badge.pass') : t('badge.review')}
               </div>
               <h3 style={{ fontFamily: C.sans, fontSize: '1.1rem', fontWeight: 600, color: 'var(--ink)', margin: '0 0 8px' }}>
-                Address {addressResult.status === 'verified' ? 'Verified' : 'Under Review'}
+                {addressResult.status === 'verified' ? t('address.verified') : t('address.underReview')}
               </h3>
               <div className="result-grid" style={{ textAlign: 'left', marginBottom: 20 }}>
-                <div>Score</div>
+                <div>{t('field.score')}</div>
                 <div style={{ color: 'var(--ink)', fontWeight: 600 }}>{Math.round((addressResult.score || 0) * 100)}%</div>
-                <div>Name Match</div>
+                <div>{t('field.nameMatch')}</div>
                 <div style={{ color: 'var(--ink)', fontWeight: 600 }}>{Math.round((addressResult.name_match_score || 0) * 100)}%</div>
                 {addressResult.address && (
                   <>
-                    <div>Address</div>
+                    <div>{t('field.address')}</div>
                     <div style={{ color: 'var(--ink)' }}>{addressResult.address}</div>
                   </>
                 )}
@@ -592,7 +596,7 @@ const UserVerificationPage: React.FC = () => {
                 className="btn-accent"
                 style={{ width: '100%', padding: '12px 0', justifyContent: 'center', cursor: 'pointer' }}
               >
-                Done
+                {t('common.done')}
               </button>
             </div>
           )}
@@ -605,11 +609,12 @@ const UserVerificationPage: React.FC = () => {
   return (
     <div style={{ background: 'var(--paper)', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <BackBtn />
+      <LanguageSwitcher floating />
       <div style={{ maxWidth: 560, width: '100%' }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           {branding?.logo_url ? (
-            <img src={branding.logo_url} alt={branding.company_name || 'Logo'} style={{ height: 36, margin: '0 auto', objectFit: 'contain' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+            <img src={branding.logo_url} alt={branding.company_name || t('common.logoAlt')} style={{ height: 36, margin: '0 auto', objectFit: 'contain' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
           ) : (
             <img src="/idswyft-logo.png" alt="Idswyft" style={{ height: 36, margin: '0 auto' }} />
           )}
@@ -622,17 +627,17 @@ const UserVerificationPage: React.FC = () => {
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <h1 style={{ fontFamily: pbFont || C.sans, fontSize: '1.6rem', fontWeight: 600, color: pbText || 'var(--ink)', margin: '0 0 8px' }}>
             {verificationMode === 'age_only'
-              ? 'Verify Your Age'
+              ? t('choice.titleAge')
               : pageConfig?.headerTitle
                 ? pageConfig.headerTitle
                 : branding?.company_name
-                  ? `Verify with ${branding.company_name}`
-                  : 'Verify Your Identity'}
+                  ? t('choice.titleWithCompany', { company: branding.company_name })
+                  : t('choice.title')}
           </h1>
           <p style={{ fontFamily: pbFont || C.sans, fontSize: '0.92rem', color: 'var(--mid)', margin: 0 }}>
             {verificationMode === 'age_only'
-              ? `Upload your ID to confirm you are ${ageThreshold ?? 18}+`
-              : pageConfig?.headerSubtitle || 'Choose how you\'d like to complete verification'}
+              ? t('choice.subtitleAge', { age: ageThreshold ?? 18 })
+              : pageConfig?.headerSubtitle || t('choice.subtitle')}
           </p>
         </div>
 
@@ -649,18 +654,18 @@ const UserVerificationPage: React.FC = () => {
                 fontFamily: C.mono, fontSize: '0.6rem', fontWeight: 600,
                 letterSpacing: '0.08em', padding: '2px 8px',
               }}>
-                RECOMMENDED
+                {t('badge.recommended')}
               </span>
             </div>
-            <div style={{ fontFamily: C.mono, fontSize: '0.8rem', color: 'var(--mid)', letterSpacing: '0.04em' }}>MOBILE</div>
+            <div style={{ fontFamily: C.mono, fontSize: '0.8rem', color: 'var(--mid)', letterSpacing: '0.04em' }}>{t('choice.mobile.eyebrow')}</div>
             <div>
               <h3 style={{ fontFamily: C.sans, fontSize: '1rem', fontWeight: 600, color: 'var(--ink)', margin: '0 0 6px' }}>
-                Continue on Your Phone
+                {t('choice.mobile.title')}
               </h3>
               <ul className="checklist">
-                {['Better camera quality', 'Guided capture experience', 'Higher success rate'].map(b => (
-                  <li key={b} className="ok" style={{ fontSize: '0.78rem', borderBottom: 'none', padding: '2px 0' }}>
-                    <span className="dot">--</span> <span>{b}</span>
+                {(['choice.mobile.benefit1', 'choice.mobile.benefit2', 'choice.mobile.benefit3'] as const).map(key => (
+                  <li key={key} className="ok" style={{ fontSize: '0.78rem', borderBottom: 'none', padding: '2px 0' }}>
+                    <span className="dot">--</span> <span>{t(key)}</span>
                   </li>
                 ))}
               </ul>
@@ -674,7 +679,7 @@ const UserVerificationPage: React.FC = () => {
                 cursor: viewOnly ? 'not-allowed' : 'pointer',
               }}
             >
-              Scan QR Code
+              {t('choice.mobile.cta')}
             </button>
           </div>
 
@@ -685,13 +690,13 @@ const UserVerificationPage: React.FC = () => {
               opacity: viewOnly ? 0.6 : 1,
             }}>
               <div style={{ height: 20 }} /> {/* spacer to align with RECOMMENDED pill */}
-              <div style={{ fontFamily: C.mono, fontSize: '0.8rem', color: 'var(--mid)', letterSpacing: '0.04em' }}>DESKTOP</div>
+              <div style={{ fontFamily: C.mono, fontSize: '0.8rem', color: 'var(--mid)', letterSpacing: '0.04em' }}>{t('choice.desktop.eyebrow')}</div>
               <div>
                 <h3 style={{ fontFamily: C.sans, fontSize: '1rem', fontWeight: 600, color: 'var(--ink)', margin: '0 0 6px' }}>
-                  Use This Device
+                  {t('choice.desktop.title')}
                 </h3>
                 <p style={{ fontFamily: C.sans, fontSize: '0.78rem', color: 'var(--mid)', margin: 0, lineHeight: 1.55 }}>
-                  Upload photos and use your webcam to complete verification on this computer.
+                  {t('choice.desktop.body')}
                 </p>
               </div>
               <button
@@ -703,7 +708,7 @@ const UserVerificationPage: React.FC = () => {
                   cursor: viewOnly ? 'not-allowed' : 'pointer',
                 }}
               >
-                Continue on Desktop
+                {t('choice.desktop.cta')}
               </button>
             </div>
           )}
@@ -711,7 +716,7 @@ const UserVerificationPage: React.FC = () => {
 
         {hasCustomBranding && showPoweredBy && (
           <p style={{ fontFamily: C.mono, fontSize: '0.68rem', color: 'var(--soft)', textAlign: 'center', marginTop: 20, letterSpacing: '0.04em' }}>
-            Powered by Idswyft
+            {t('common.poweredBy')}
           </p>
         )}
       </div>

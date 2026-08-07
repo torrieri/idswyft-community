@@ -6,6 +6,7 @@ import { Toaster } from 'react-hot-toast'
 import './index.css'
 import App from './App.tsx'
 import { initTheme } from './theme'
+import { I18nProvider } from './i18n'
 
 // Initialize theme from localStorage (dark default)
 initTheme()
@@ -24,7 +25,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
-        <App />
+        <I18nProvider>
+          <App />
+        </I18nProvider>
         <Toaster
           position="top-right"
           toastOptions={{

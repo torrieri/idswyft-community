@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react'
 import { C } from '../../theme'
+import { useT } from '../../i18n'
 import type { PageBuilderConfig, PageBranding } from './types'
 
 // Shared shape for the terminal verification result. Deliberately narrower
@@ -82,26 +83,25 @@ function ConfettiBurst() {
  * UserVerificationPage.
  */
 export function CompletionScreen({ config, branding, device, result }: CompletionScreenProps) {
-  const statusLabel =
-    result?.status === 'verified' || result?.status === 'completed'
-      ? 'Verified'
-      : result?.status === 'failed'
-        ? 'Failed'
-        : 'Under Review'
-  const isSuccess = statusLabel === 'Verified'
-  const isFailed = statusLabel === 'Failed'
+  const t = useT()
+  const isSuccess = result?.status === 'verified' || result?.status === 'completed'
+  const isFailed = result?.status === 'failed'
 
   const hasCustomBranding = !!(branding?.logo_url || branding?.company_name || branding?.accent_color)
   const showPoweredBy = config?.showPoweredBy ?? true
 
+  // config.completionTitle / completionMessage are the integrating developer's
+  // own copy — never translated, they always win over the catalog.
   const heading = isSuccess
-    ? config?.completionTitle || 'Verification Verified'
-    : `Verification ${statusLabel}`
+    ? config?.completionTitle || t('completion.verified')
+    : isFailed
+      ? t('completion.failedHeading')
+      : t('completion.reviewHeading')
   const body = isSuccess
-    ? config?.completionMessage || 'Your identity has been successfully verified.'
-    : statusLabel === 'Failed'
-      ? 'Verification could not be completed. Please try again.'
-      : 'Your verification is being reviewed. You will be notified of the result.'
+    ? config?.completionMessage || t('completion.successBody')
+    : isFailed
+      ? t('completion.failedBody')
+      : t('completion.reviewBody')
 
   return (
     <div style={{
@@ -111,7 +111,7 @@ export function CompletionScreen({ config, branding, device, result }: Completio
       {isSuccess && config?.showConfetti && <ConfettiBurst />}
       <div style={{ maxWidth: device === 'mobile' ? 380 : 440, width: '100%', textAlign: 'center' }}>
         {branding?.logo_url ? (
-          <img src={branding.logo_url} alt={branding.company_name || 'Logo'} style={{ height: 36, margin: '0 auto 32px', objectFit: 'contain' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          <img src={branding.logo_url} alt={branding.company_name || t('common.logoAlt')} style={{ height: 36, margin: '0 auto 32px', objectFit: 'contain' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
         ) : (
           <img src="/idswyft-logo.png" alt="Idswyft" style={{ height: 36, margin: '0 auto 32px' }} />
         )}
@@ -119,7 +119,7 @@ export function CompletionScreen({ config, branding, device, result }: Completio
           margin: '0 auto 16px', display: 'inline-flex', padding: '8px 16px',
           fontFamily: C.mono, fontSize: 12, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
         }}>
-          {isSuccess ? 'PASS' : isFailed ? 'FAIL' : 'REVIEW'}
+          {isSuccess ? t('badge.pass') : isFailed ? t('badge.fail') : t('badge.review')}
         </div>
         <h1 style={{ fontFamily: C.sans, fontSize: '1.4rem', fontWeight: 600, color: 'var(--ink)', margin: '16px 0 8px' }}>
           {heading}
@@ -131,30 +131,30 @@ export function CompletionScreen({ config, branding, device, result }: Completio
           <div className="result-grid" style={{ textAlign: 'left' }}>
             {result.confidence_score != null && (
               <>
-                <div>Confidence</div>
+                <div>{t('field.confidence')}</div>
                 <div style={{ color: 'var(--ink)', fontWeight: 600 }}>{Math.round(result.confidence_score * 100)}%</div>
               </>
             )}
             {result.face_match_score != null && (
               <>
-                <div>Face Match</div>
+                <div>{t('field.faceMatch')}</div>
                 <div style={{ color: 'var(--ink)', fontWeight: 600 }}>{Math.round(result.face_match_score * 100)}%</div>
               </>
             )}
             {result.liveness_score != null && (
               <>
-                <div>Liveness</div>
+                <div>{t('field.liveness')}</div>
                 <div style={{ color: 'var(--ink)', fontWeight: 600 }}>{Math.round(result.liveness_score * 100)}%</div>
               </>
             )}
           </div>
         )}
         <p style={{ fontFamily: C.mono, fontSize: '0.72rem', color: 'var(--soft)', marginTop: 24, letterSpacing: '0.04em' }}>
-          You can close this window.
+          {t('common.closeWindow')}
         </p>
         {hasCustomBranding && showPoweredBy && (
           <p style={{ fontFamily: C.mono, fontSize: '0.68rem', color: 'var(--soft)', marginTop: 12, letterSpacing: '0.04em' }}>
-            Powered by Idswyft
+            {t('common.poweredBy')}
           </p>
         )}
       </div>

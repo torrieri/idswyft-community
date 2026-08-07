@@ -8,6 +8,8 @@ import { ActiveLivenessCapture } from '../components/liveness/ActiveLivenessCapt
 import type { LivenessMetadata } from '../hooks/useActiveLiveness';
 import { resolveThemeVars } from '../components/verification/theme';
 import type { PageBuilderConfig } from '../components/verification/types';
+import { useT, useLocale, type TranslationKey } from '../i18n';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 
 // ─── Design system CSS (v2 — technical editorial) ─────────────────────────
 const css = `
@@ -24,13 +26,15 @@ const css = `
 `;
 
 // ─── Step definitions ───────────────────────────────────────────────────────
-const FULL_STEP_LABELS = ['Front ID', 'Back ID', 'Checking', 'Live Photo', 'Complete'];
-const FULL_VOICE_STEP_LABELS = ['Front ID', 'Back ID', 'Checking', 'Live Photo', 'Voice', 'Complete'];
-const DOCUMENT_ONLY_STEP_LABELS = ['Front ID', 'Back ID', 'Checking', 'Complete'];
-const IDENTITY_STEP_LABELS = ['Front ID', 'Checking', 'Live Photo', 'Complete'];
-const AGE_ONLY_STEP_LABELS = ['Upload ID', 'Complete'];
+// Translation keys, not literals — StepTracker resolves them at render so the
+// tracker follows the active locale.
+const FULL_STEP_LABELS: TranslationKey[] = ['mobile.step.frontId', 'mobile.step.backId', 'mobile.step.checking', 'mobile.step.livePhoto', 'mobile.step.complete'];
+const FULL_VOICE_STEP_LABELS: TranslationKey[] = ['mobile.step.frontId', 'mobile.step.backId', 'mobile.step.checking', 'mobile.step.livePhoto', 'mobile.step.voice', 'mobile.step.complete'];
+const DOCUMENT_ONLY_STEP_LABELS: TranslationKey[] = ['mobile.step.frontId', 'mobile.step.backId', 'mobile.step.checking', 'mobile.step.complete'];
+const IDENTITY_STEP_LABELS: TranslationKey[] = ['mobile.step.frontId', 'mobile.step.checking', 'mobile.step.livePhoto', 'mobile.step.complete'];
+const AGE_ONLY_STEP_LABELS: TranslationKey[] = ['mobile.step.uploadId', 'mobile.step.complete'];
 // Passport in document_only mode: front scan → done
-const PASSPORT_DOC_ONLY_STEP_LABELS = ['Front ID', 'Checking', 'Complete'];
+const PASSPORT_DOC_ONLY_STEP_LABELS: TranslationKey[] = ['mobile.step.frontId', 'mobile.step.checking', 'mobile.step.complete'];
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type Screen = 'front' | 'back' | 'checking' | 'live' | 'voice' | 'done';
@@ -40,9 +44,11 @@ const SCREEN_IDX = { front: 0, back: 1, checking: 2, live: 3, voice: 4, done: 5 
 // ─── Sub-Components ─────────────────────────────────────────────────────────
 
 /* Step progress tracker — v2 stepper pattern (border-top segments) */
-const StepTracker: React.FC<{ activeIdx: number; labels?: string[] }> = ({ activeIdx, labels = FULL_STEP_LABELS }) => (
+const StepTracker: React.FC<{ activeIdx: number; labels?: TranslationKey[] }> = ({ activeIdx, labels = FULL_STEP_LABELS }) => {
+  const t = useT();
+  return (
   <div style={{ padding: '12px 24px 0', display: 'grid', gridTemplateColumns: `repeat(${labels.length}, 1fr)`, gap: 8, fontFamily: 'var(--mono)', fontSize: 9 }}>
-    {labels.map((label, i) => {
+    {labels.map((labelKey, i) => {
       const state = i < activeIdx ? 'done' : i === activeIdx ? 'active' : 'pending';
       return (
         <div key={i} style={{ position: 'relative' }}>
@@ -62,11 +68,26 @@ const StepTracker: React.FC<{ activeIdx: number; labels?: string[] }> = ({ activ
           <span style={{
             textTransform: 'uppercase', letterSpacing: '0.06em',
             color: state === 'done' ? 'var(--accent-ink)' : state === 'active' ? 'var(--ink)' : 'var(--mid)',
-          }}>{label}</span>
+          }}>{t(labelKey)}</span>
         </div>
       );
     })}
   </div>
+  );
+};
+
+/* Renders a translated string that carries deliberate line breaks (\n) as <br />.
+   Headline copy breaks at different words in each language, so the break point
+   belongs in the catalog, not in the JSX. */
+const MultilineText: React.FC<{ text: string }> = ({ text }) => (
+  <>
+    {text.split('\n').map((line, i, all) => (
+      <React.Fragment key={i}>
+        {line}
+        {i < all.length - 1 && <br />}
+      </React.Fragment>
+    ))}
+  </>
 );
 
 /* Tip bar — v2 prompt-tag style */
@@ -111,6 +132,7 @@ const IDViewfinder: React.FC<{
   variant: 'front' | 'back'; processing: boolean; processingLabel: string;
   previewUrl?: string | null;
 }> = ({ variant, processing, processingLabel, previewUrl }) => {
+  const t = useT();
   // Corner marks: position + which two borders to show (sharp, no radius)
   const corners = [
     { top: 12, left: 12, bw: '2px 0 0 2px' },
@@ -128,7 +150,7 @@ const IDViewfinder: React.FC<{
     }}>
       {/* Inner card mock or preview image */}
       {previewUrl ? (
-        <img src={previewUrl} alt="Document preview" style={{
+        <img src={previewUrl} alt={t('common.documentPreviewAlt')} style={{
           position: 'absolute', inset: 16,
           objectFit: 'cover', width: 'calc(100% - 32px)', height: 'calc(100% - 32px)',
         }} />
@@ -233,6 +255,7 @@ const AmbientGlow: React.FC = () => (
 const OvalFaceViewfinder: React.FC<{
   processing: boolean; previewUrl?: string | null;
 }> = ({ processing, previewUrl }) => {
+  const t = useT();
   const ovalRadius = '114px 114px 94px 94px';
   return (
     <div style={{
@@ -242,7 +265,7 @@ const OvalFaceViewfinder: React.FC<{
     }}>
       {/* Selfie preview when captured */}
       {previewUrl && (
-        <img src={previewUrl} alt="Selfie preview" style={{
+        <img src={previewUrl} alt={t('common.selfiePreviewAlt')} style={{
           position: 'absolute', inset: 0, width: '100%', height: '100%',
           objectFit: 'cover', borderRadius: ovalRadius,
         }} />
@@ -299,7 +322,7 @@ const OvalFaceViewfinder: React.FC<{
             fontFamily: 'var(--mono)', fontSize: 11,
             color: 'var(--accent)', letterSpacing: '0.18em',
             animation: 'blink 1.4s ease infinite',
-          }}>CHECKING</span>
+          }}>{t('mobile.checking.overlay')}</span>
         </div>
       )}
     </div>
@@ -307,13 +330,14 @@ const OvalFaceViewfinder: React.FC<{
 };
 
 /* Liveness Cues — 3 cycling circles */
-const LIVENESS_CUES = [
-  { emoji: '😐', label: 'Look ahead' },
-  { emoji: '😊', label: 'Smile' },
-  { emoji: '↔', label: 'Turn slightly' },
-] as const;
+const LIVENESS_CUES: { emoji: string; label: TranslationKey }[] = [
+  { emoji: '😐', label: 'mobile.live.cueLookAhead' },
+  { emoji: '😊', label: 'mobile.live.cueSmile' },
+  { emoji: '↔', label: 'mobile.live.cueTurn' },
+];
 
 const LivenessCues: React.FC<{ hidden?: boolean }> = ({ hidden }) => {
+  const t = useT();
   const [activeIdx, setActiveIdx] = useState(0);
 
   useEffect(() => {
@@ -343,7 +367,7 @@ const LivenessCues: React.FC<{ hidden?: boolean }> = ({ hidden }) => {
               letterSpacing: '0.06em',
               color: isActive ? 'var(--accent-ink)' : 'var(--mid)',
               transition: 'color 0.3s ease',
-            }}>{cue.label}</span>
+            }}>{t(cue.label)}</span>
           </div>
         );
       })}
@@ -353,6 +377,8 @@ const LivenessCues: React.FC<{ hidden?: boolean }> = ({ hidden }) => {
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 const MobileVerificationPage: React.FC = () => {
+  const t = useT();
+  const { locale } = useLocale();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const verificationMode = searchParams.get('verification_mode') as 'full' | 'document_only' | 'identity' | 'age_only' | null;
@@ -393,8 +419,8 @@ const MobileVerificationPage: React.FC = () => {
   const [useFallbackSelfie, setUseFallbackSelfie] = useState(false);
   const selfieMetadataRef = useRef<LivenessMetadata | null>(null);
 
-  // Checking screen messages
-  const [checkingMsg, setCheckingMsg] = useState('Verifying your document…');
+  // Checking screen messages — stored as a key so the cycling copy follows the locale
+  const [checkingMsgKey, setCheckingMsgKey] = useState<TranslationKey>('mobile.checking.msg1');
 
   // Passport back-skip state
   const [skipBack, setSkipBack] = useState(false);
@@ -444,20 +470,20 @@ const MobileVerificationPage: React.FC = () => {
   // ── Handoff session fetch ──────────────────────────────────────────────
   useEffect(() => {
     if (!token) {
-      setError('Invalid link — no token provided.');
+      setError(t('mobile.error.noToken'));
       setLoading(false);
       return;
     }
     const controller = new AbortController();
     fetch(`${API_BASE_URL}/api/verify/handoff/${token}/session`, { signal: controller.signal })
       .then(r => {
-        if (r.status === 410) throw new Error('This QR code has expired. Please generate a new one on your desktop.');
-        if (r.status === 409) throw new Error('This link has already been used.');
-        if (!r.ok) throw new Error('Invalid or unrecognised link.');
+        if (r.status === 410) throw new Error(t('mobile.error.qrExpired'));
+        if (r.status === 409) throw new Error(t('mobile.error.linkUsed'));
+        if (!r.ok) throw new Error(t('mobile.error.linkInvalid'));
         return r.json();
       })
       .then(data => {
-        if (!data.user_id) throw new Error('Session response is incomplete. Please try scanning the QR code again.');
+        if (!data.user_id) throw new Error(t('mobile.error.sessionIncomplete'));
         setUserId(data.user_id);
         // Apply branding from the session response (inlined by backend)
         if (data.branding) {
@@ -486,7 +512,7 @@ const MobileVerificationPage: React.FC = () => {
         const isNetwork = e.message === 'Failed to fetch' || e.message === 'Load failed' || e.message.toLowerCase().includes('network');
         setError(
           isNetwork
-            ? 'Could not reach the verification server. Make sure your phone and computer are on the same Wi-Fi network, then scan the QR code again.'
+            ? t('mobile.error.network')
             : e.message
         );
       })
@@ -514,7 +540,7 @@ const MobileVerificationPage: React.FC = () => {
           ...(ageThreshold && { age_threshold: ageThreshold }),
         }),
       });
-      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Failed to start'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || t('mobile.error.startFailed')); }
       const data = await res.json();
       if (!mountedRef.current) return;
       setVerificationId(data.verification_id);
@@ -529,7 +555,7 @@ const MobileVerificationPage: React.FC = () => {
       setLoading(false);
     } catch (err: any) {
       if (mountedRef.current) {
-        setError(err.message || 'Failed to start verification');
+        setError(err.message || t('mobile.error.startFailed'));
         setLoading(false);
       }
     }
@@ -607,13 +633,13 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/front-document`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
-      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Upload failed'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || t('mobile.error.uploadFailed')); }
       if (!mountedRef.current) return;
       const data = await res.json().catch(() => null);
 
       // Gate 1 may hard-reject (e.g. image too blurry for OCR) — let user retake
       if (data?.rejection_reason) {
-        setStepError(data.message || 'The photo of your ID is not clear enough. Please retake it in good lighting.');
+        setStepError(data.message || t('mobile.error.blurryId'));
         setFrontFile(null);
         if (frontPreviewUrl) URL.revokeObjectURL(frontPreviewUrl);
         setFrontPreviewUrl(null);
@@ -648,7 +674,7 @@ const MobileVerificationPage: React.FC = () => {
   // ── Poll front OCR ─────────────────────────────────────────────────────
   const pollFrontOCR = async (attempt: number) => {
     if (!verificationId || !token || !mountedRef.current) return;
-    if (attempt >= 60) { setStepError('OCR timed out. Please try again.'); return; }
+    if (attempt >= 60) { setStepError(t('mobile.error.ocrTimeout')); return; }
     try {
       const data = await apiGet(`/api/v2/verify/${verificationId}/status`);
       if (!mountedRef.current) return;
@@ -666,7 +692,7 @@ const MobileVerificationPage: React.FC = () => {
   // ── Poll front OCR for back-skip modes (identity/passport — skip back doc) ──
   const pollFrontOCRForIdentity = async (attempt: number) => {
     if (!verificationId || !token || !mountedRef.current) return;
-    if (attempt >= 60) { setStepError('OCR timed out. Please try again.'); return; }
+    if (attempt >= 60) { setStepError(t('mobile.error.ocrTimeout')); return; }
     try {
       const data = await apiGet(`/api/v2/verify/${verificationId}/status`);
       if (!mountedRef.current) return;
@@ -704,7 +730,7 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/back-document`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
-      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Upload failed'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || t('mobile.error.uploadFailed')); }
       if (!mountedRef.current) return;
 
       // For document_only, the back-doc response may already include final_result
@@ -729,10 +755,10 @@ const MobileVerificationPage: React.FC = () => {
   // ── Poll cross-validation ──────────────────────────────────────────────
   const pollCrossValidation = async (attempt: number) => {
     if (!verificationId || !token || !mountedRef.current) return;
-    if (attempt >= 60) { setStepError('Validation timed out. Please try again.'); return; }
+    if (attempt >= 60) { setStepError(t('mobile.error.validationTimeout')); return; }
 
     // Cycle checking messages
-    if (attempt === 0) setCheckingMsg('Verifying your document…');
+    if (attempt === 0) setCheckingMsgKey('mobile.checking.msg1');
 
     try {
       const data = await apiGet(`/api/v2/verify/${verificationId}/status`);
@@ -775,11 +801,11 @@ const MobileVerificationPage: React.FC = () => {
   // Cycling messages for checking screen
   useEffect(() => {
     if (screen !== 'checking') return;
-    const msgs = ['Verifying your document…', 'Cross-checking details…', 'Almost there…'];
+    const msgs: TranslationKey[] = ['mobile.checking.msg1', 'mobile.checking.msg2', 'mobile.checking.msg3'];
     let idx = 0;
     const iv = setInterval(() => {
       idx = (idx + 1) % msgs.length;
-      setCheckingMsg(msgs[idx]);
+      setCheckingMsgKey(msgs[idx]);
     }, 1800);
     return () => clearInterval(iv);
   }, [screen]);
@@ -806,7 +832,7 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/live-capture`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
-      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Liveness check failed'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || t('mobile.error.livenessFailed')); }
       if (!mountedRef.current) return;
 
       // The live-capture response includes final_result — use it directly if available
@@ -848,7 +874,7 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/live-capture`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
-      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Selfie upload failed'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || t('mobile.error.selfieFailed')); }
       if (!mountedRef.current) return;
 
       // Use the response's final_result directly if available (avoids polling dependency)
@@ -869,7 +895,7 @@ const MobileVerificationPage: React.FC = () => {
   const waitForFinalResult = async (attempt: number) => {
     if (!verificationId || !token || !mountedRef.current) return;
     if (attempt >= 60) {
-      if (mountedRef.current) setStepError('Verification is taking too long. Please close and try again.');
+      if (mountedRef.current) setStepError(t('mobile.error.tooLong'));
       return;
     }
     try {
@@ -924,7 +950,7 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/voice-challenge`, {
         method: 'POST', headers: { 'X-Handoff-Token': token },
       });
-      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Failed to get challenge'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || t('voice.error.challengeFailed')); }
       const data = await res.json();
       setVoiceChallengeDigits(data.challenge_digits);
       setVoiceExpiresIn(data.expires_in_seconds);
@@ -973,7 +999,7 @@ const MobileVerificationPage: React.FC = () => {
         if (voiceMediaRecorderRef.current?.state === 'recording') voiceMediaRecorderRef.current.stop();
       }, 10000) as unknown as number;
     } catch (err: any) {
-      if (mountedRef.current) setStepError(err.message || 'Microphone access denied');
+      if (mountedRef.current) setStepError(err.message || t('voice.error.micDenied'));
     }
   };
 
@@ -992,7 +1018,7 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/voice-capture`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
-      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || 'Voice verification failed'); }
+      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || t('voice.error.verifyFailed')); }
       if (voiceExpiryRef.current) clearInterval(voiceExpiryRef.current);
       // Go to done screen and poll for final result
       setScreenIdx(SCREEN_IDX.done);
@@ -1016,7 +1042,7 @@ const MobileVerificationPage: React.FC = () => {
       });
       if (!res.ok) {
         const err = await parseApiError(res);
-        throw new Error(err || 'Failed to restart verification');
+        throw new Error(err || t('mobile.error.restartFailed'));
       }
       if (!mountedRef.current) return;
       // Reset all local state — reuse same verificationId
@@ -1131,7 +1157,7 @@ const MobileVerificationPage: React.FC = () => {
           <span style={{
             fontFamily: 'var(--mono)', fontSize: 12,
             color: 'var(--mid)', letterSpacing: '0.08em',
-          }}>Preparing your session...</span>
+          }}>{t('common.preparingSession')}</span>
         </div>
       </div>
     );
@@ -1151,7 +1177,7 @@ const MobileVerificationPage: React.FC = () => {
             fontSize: 32, color: 'var(--flag)',
           }}>!</div>
           <h2 style={{ fontFamily: 'var(--sans)', fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', lineHeight: 1.12 }}>
-            Unable to Load
+            {t('mobile.unableToLoad')}
           </h2>
           <p style={{ fontFamily: 'var(--mono)', fontSize: 13, color: 'var(--mid)', lineHeight: 1.55 }}>
             {error}
@@ -1173,23 +1199,20 @@ const MobileVerificationPage: React.FC = () => {
         fontFamily: 'var(--mono)', fontSize: 11,
       }}>
         <span style={{ color: 'var(--mid)' }}>
-          {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {new Date().toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}
         </span>
         <span style={{ color: 'var(--accent)', letterSpacing: '0.1em', fontSize: 10, textTransform: 'uppercase' }}>
-          Secure Session
+          {t('mobile.secureSession')}
         </span>
-        <span style={{ color: 'var(--mid)' }}>
-          {/* Signal dots */}
-          <span style={{ opacity: 1 }}>●</span>
-          <span style={{ opacity: 0.7 }}>●</span>
-          <span style={{ opacity: 0.4 }}>●</span>
-        </span>
+        {/* Language picker occupies the status bar's right slot — it replaces the
+            purely decorative signal dots so the layout is unchanged. */}
+        <LanguageSwitcher />
       </div>
 
       {/* Branding logo — centered under the status bar */}
       {brandingLogo && (
         <div style={{ padding: '6px 24px 0' }}>
-          <img src={brandingLogo} alt={brandingCompany || 'Logo'} style={{ height: 24, maxWidth: '60%', objectFit: 'contain', display: 'block', margin: '0 auto' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          <img src={brandingLogo} alt={brandingCompany || t('common.logoAlt')} style={{ height: 24, maxWidth: '60%', objectFit: 'contain', display: 'block', margin: '0 auto' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
         </div>
       )}
 
@@ -1226,19 +1249,18 @@ const MobileVerificationPage: React.FC = () => {
               fontFamily: 'var(--mono)', fontSize: 10, fontWeight: 400,
               textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)',
               marginBottom: 8,
-            }}>{isAgeOnly ? 'Step 1 of 1 — Upload ID'
-              : isIdentity ? 'Step 1 of 4 — Front of ID'
-              : isDocumentOnly ? 'Step 1 of 4 — Front of ID'
-              : 'Step 1 of 5 — Front of ID'}</span>
+            }}>{isAgeOnly
+              ? t('mobile.stepOf', { current: 1, total: 1, label: t('mobile.label.uploadId') })
+              : t('mobile.stepOf', { current: 1, total: isIdentity || isDocumentOnly ? 4 : 5, label: t('mobile.label.frontOfId') })}</span>
 
             <h1 style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.12, letterSpacing: '-0.025em', marginBottom: 8 }}>
-              {isAgeOnly ? <>Upload your ID<br />to verify your age</> : <>Scan the front<br />of your ID</>}
+              <MultilineText text={isAgeOnly ? t('mobile.front.titleAge') : t('mobile.front.title')} />
             </h1>
 
             <p style={{ fontSize: 13, fontWeight: 400, color: 'var(--mid)', lineHeight: 1.55, marginBottom: 16 }}>
               {isAgeOnly
-                ? `We'll check your date of birth to confirm you are ${ageThreshold ?? 18}+. No other data is stored.`
-                : 'Position your ID card and take a clear photo. Make sure all four corners are visible and the text is clear.'}
+                ? t('mobile.front.bodyAge', { age: ageThreshold ?? 18 })
+                : t('mobile.front.body')}
             </p>
 
             {/* Document type selector */}
@@ -1253,16 +1275,16 @@ const MobileVerificationPage: React.FC = () => {
                   fontSize: 12, outline: 'none',
                 }}
               >
-                <option value="national_id">National ID</option>
-                <option value="passport">Passport</option>
-                <option value="drivers_license">Driver's License</option>
+                <option value="national_id">{t('docType.national_id')}</option>
+                <option value="passport">{t('docType.passport')}</option>
+                <option value="drivers_license">{t('docType.drivers_license')}</option>
               </select>
             </div>
 
-            <TipBar text="Good lighting · No glare · Hold steady" />
+            <TipBar text={t('mobile.front.tip')} />
 
             <div style={{ marginTop: 12 }} />
-            <IDViewfinder variant="front" processing={isProcessing} processingLabel="READING FRONT" previewUrl={frontPreviewUrl} />
+            <IDViewfinder variant="front" processing={isProcessing} processingLabel={t('mobile.front.reading')} previewUrl={frontPreviewUrl} />
 
             {/* Hidden file input (fallback when camera unsupported) */}
             <input type="file" accept="image/*" capture="environment" id="mv-front-upload" style={{ display: 'none' }}
@@ -1273,11 +1295,11 @@ const MobileVerificationPage: React.FC = () => {
                 onClick={() => cameraSupported ? openCamera('front') : document.getElementById('mv-front-upload')?.click()}
                 disabled={isProcessing}
               >
-                Take Photo of Front
+                {t('mobile.front.takePhoto')}
               </PrimaryBtn>
             ) : (
               <PrimaryBtn onClick={uploadFront} disabled={isProcessing}>
-                {isProcessing ? 'Processing…' : 'Scan Front of ID'}
+                {isProcessing ? t('common.processingEllipsis') : t('mobile.front.scan')}
               </PrimaryBtn>
             )}
 
@@ -1298,20 +1320,20 @@ const MobileVerificationPage: React.FC = () => {
               fontFamily: 'var(--mono)', fontSize: 10,
               textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)',
               marginBottom: 8,
-            }}>{isDocumentOnly ? 'Step 2 of 4 — Back of ID' : 'Step 2 of 5 — Back of ID'}</span>
+            }}>{t('mobile.stepOf', { current: 2, total: isDocumentOnly ? 4 : 5, label: t('mobile.label.backOfId') })}</span>
 
             <h1 style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.12, letterSpacing: '-0.025em', marginBottom: 8 }}>
-              Now flip it over<br />and scan the back
+              <MultilineText text={t('mobile.back.title')} />
             </h1>
 
             <p style={{ fontSize: 13, color: 'var(--mid)', lineHeight: 1.55, marginBottom: 16 }}>
-              Keep the same conditions — good lighting, flat surface. The barcode on the back must be fully visible.
+              {t('mobile.back.body')}
             </p>
 
-            <TipBar text="Barcode must be unobstructed" />
+            <TipBar text={t('mobile.back.tip')} />
 
             <div style={{ marginTop: 12 }} />
-            <IDViewfinder variant="back" processing={isProcessing} processingLabel="READING BARCODE" previewUrl={backPreviewUrl} />
+            <IDViewfinder variant="back" processing={isProcessing} processingLabel={t('mobile.back.reading')} previewUrl={backPreviewUrl} />
 
             {/* Hidden file input (fallback when camera unsupported) */}
             <input type="file" accept="image/*" capture="environment" id="mv-back-upload" style={{ display: 'none' }}
@@ -1322,11 +1344,11 @@ const MobileVerificationPage: React.FC = () => {
                 onClick={() => cameraSupported ? openCamera('back') : document.getElementById('mv-back-upload')?.click()}
                 disabled={isProcessing}
               >
-                Take Photo of Back
+                {t('mobile.back.takePhoto')}
               </PrimaryBtn>
             ) : (
               <PrimaryBtn onClick={uploadBack} disabled={isProcessing}>
-                {isProcessing ? 'Processing…' : 'Scan Back of ID'}
+                {isProcessing ? t('common.processingEllipsis') : t('mobile.back.scan')}
               </PrimaryBtn>
             )}
 
@@ -1350,9 +1372,10 @@ const MobileVerificationPage: React.FC = () => {
               textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)',
               marginBottom: 24,
             }}>{isDocumentOnly
-              ? (skipBack ? 'Step 2 of 3 — Verification' : 'Step 3 of 4 — Verification')
-              : (isIdentity || skipBack) ? 'Step 2 of 4 — Verification'
-              : 'Step 3 of 5 — Verification'}</span>
+              ? t('mobile.stepOf', { current: skipBack ? 2 : 3, total: skipBack ? 3 : 4, label: t('mobile.label.verification') })
+              : (isIdentity || skipBack)
+                ? t('mobile.stepOf', { current: 2, total: 4, label: t('mobile.label.verification') })
+                : t('mobile.stepOf', { current: 3, total: 5, label: t('mobile.label.verification') })}</span>
 
             <div style={{
               width: 80, height: 80, border: '2px solid var(--rule)',
@@ -1361,21 +1384,21 @@ const MobileVerificationPage: React.FC = () => {
             }} />
 
             <p style={{ fontFamily: 'var(--sans)', fontSize: 16, fontWeight: 700, marginBottom: 6 }}>
-              {checkingMsg}
+              {t(checkingMsgKey)}
             </p>
             <p style={{
               fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--mid)',
               letterSpacing: '0.08em',
-            }}>This only takes a moment</p>
+            }}>{t('mobile.checking.hint')}</p>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
-              {['Document read', 'Details matched', 'Security checks'].map(tag => (
+              {(['mobile.checking.tag1', 'mobile.checking.tag2', 'mobile.checking.tag3'] as TranslationKey[]).map(tag => (
                 <span key={tag} style={{
                   padding: '5px 10px',
                   background: 'var(--accent-soft)', border: '1px solid var(--rule)',
                   fontFamily: 'var(--mono)', fontSize: 10,
                   color: 'var(--accent-ink)',
-                }}>{tag}</span>
+                }}>{t(tag)}</span>
               ))}
             </div>
 
@@ -1396,25 +1419,27 @@ const MobileVerificationPage: React.FC = () => {
               fontFamily: 'var(--mono)', fontSize: 10,
               textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)',
               marginBottom: 8,
-            }}>{(isIdentity || skipBack) ? 'Step 3 of 4 — Live Photo' : 'Step 4 of 5 — Live Photo'}</span>
+            }}>{(isIdentity || skipBack)
+              ? t('mobile.stepOf', { current: 3, total: 4, label: t('mobile.label.livePhoto') })
+              : t('mobile.stepOf', { current: 4, total: 5, label: t('mobile.label.livePhoto') })}</span>
 
             {/* Active liveness (primary path) */}
             {!useFallbackSelfie && !selfieFile && !showSelfieCamera ? (
               <>
                 <h1 style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.12, letterSpacing: '-0.025em', marginBottom: 8 }}>
-                  Liveness check
+                  {t('mobile.live.title')}
                 </h1>
 
                 <p style={{ fontSize: 13, color: 'var(--mid)', lineHeight: 1.55, marginBottom: 12 }}>
-                  Follow the on-screen instructions — look at the camera and turn your head when prompted.
+                  {t('mobile.live.body')}
                 </p>
 
                 {!showActiveLiveness ? (
                   <>
-                    <TipBar text="Remove glasses · Face well-lit · No hat" />
+                    <TipBar text={t('mobile.live.tip')} />
                     <div style={{ marginTop: 14 }} />
                     <PrimaryBtn onClick={() => setShowActiveLiveness(true)} disabled={isProcessing}>
-                      Start Liveness Check
+                      {t('mobile.live.start')}
                     </PrimaryBtn>
                   </>
                 ) : (
@@ -1432,11 +1457,11 @@ const MobileVerificationPage: React.FC = () => {
               /* Fallback: legacy selfie capture */
               <>
                 <h1 style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.12, letterSpacing: '-0.025em', marginBottom: 8 }}>
-                  Take a quick<br />selfie
+                  <MultilineText text={t('mobile.live.selfieTitle')} />
                 </h1>
 
                 <p style={{ fontSize: 13, color: 'var(--mid)', lineHeight: 1.55, marginBottom: 12 }}>
-                  We need to confirm your identity matches your ID. Look directly at the camera in a well-lit area.
+                  {t('mobile.live.selfieBody')}
                 </p>
 
                 {/* Oval face viewfinder */}
@@ -1445,7 +1470,7 @@ const MobileVerificationPage: React.FC = () => {
                 {/* Liveness cues — hidden when processing */}
                 <LivenessCues hidden={isProcessing} />
 
-                <TipBar text="Remove glasses · Face well-lit · No hat" />
+                <TipBar text={t('mobile.live.tip')} />
 
                 <div style={{ marginTop: 14 }} />
 
@@ -1458,11 +1483,11 @@ const MobileVerificationPage: React.FC = () => {
                     onClick={() => cameraSupported ? setShowSelfieCamera(true) : document.getElementById('mv-selfie-upload')?.click()}
                     disabled={isProcessing}
                   >
-                    Take Selfie
+                    {t('mobile.live.takeSelfie')}
                   </PrimaryBtn>
                 ) : (
                   <PrimaryBtn onClick={uploadSelfie} disabled={isProcessing}>
-                    {isProcessing ? 'Processing…' : 'Submit Selfie'}
+                    {isProcessing ? t('common.processingEllipsis') : t('mobile.live.submitSelfie')}
                   </PrimaryBtn>
                 )}
               </>
@@ -1498,9 +1523,9 @@ const MobileVerificationPage: React.FC = () => {
         {/* ── Screen 4: Voice ─────────────────────────────────────────── */}
         {screen === 'voice' && (
           <div className="mv-fade-up" style={{ padding: '0 24px', textAlign: 'center' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>Speaker Verification</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', marginBottom: 4 }}>{t('voice.title')}</h2>
             <p style={{ fontSize: 12, color: 'var(--mid)', marginBottom: 16 }}>
-              Speak the digits shown below into your microphone.
+              {t('voice.subtitle')}
             </p>
 
             {/* Mic icon */}
@@ -1520,34 +1545,34 @@ const MobileVerificationPage: React.FC = () => {
             {voiceChallengeDigits && (voiceExpiresIn === null || voiceExpiresIn > 0) && (
               <div style={{ padding: 12, border: '1px solid var(--rule)', borderRadius: 8, marginBottom: 16 }}>
                 <div style={{ fontSize: 9, fontFamily: 'var(--mono)', color: 'var(--mid)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  Speak these digits
+                  {t('voice.speakDigits')}
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '0.2em', color: 'var(--ink)' }}>
                   {voiceChallengeDigits}
                 </div>
                 {voiceExpiresIn !== null && (
                   <div style={{ fontSize: 10, fontFamily: 'var(--mono)', color: voiceExpiresIn < 30 ? '#ef4444' : 'var(--mid)', marginTop: 4 }}>
-                    Expires in {voiceExpiresIn}s
+                    {t('voice.expiresIn', { seconds: voiceExpiresIn })}
                   </div>
                 )}
               </div>
             )}
 
-            {voiceIsRecording && <p style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--accent, #22d3ee)', marginBottom: 8 }}>Recording: {voiceRecordingDuration}s</p>}
-            {voiceHasRecording && !voiceIsRecording && !isProcessing && <p style={{ fontFamily: 'var(--mono)', fontSize: 11, color: '#22c55e', marginBottom: 8 }}>Captured ({voiceRecordingDuration}s)</p>}
+            {voiceIsRecording && <p style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--accent, #22d3ee)', marginBottom: 8 }}>{t('voice.recording', { seconds: voiceRecordingDuration })}</p>}
+            {voiceHasRecording && !voiceIsRecording && !isProcessing && <p style={{ fontFamily: 'var(--mono)', fontSize: 11, color: '#22c55e', marginBottom: 8 }}>{t('voice.captured', { seconds: voiceRecordingDuration })}</p>}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 280, margin: '0 auto' }}>
               {!voiceChallengeDigits && !isProcessing && (
-                <PrimaryBtn onClick={handleVoiceChallenge}>Get Challenge</PrimaryBtn>
+                <PrimaryBtn onClick={handleVoiceChallenge}>{t('voice.getChallenge')}</PrimaryBtn>
               )}
               {voiceChallengeDigits && !voiceIsRecording && !voiceHasRecording && (voiceExpiresIn === null || voiceExpiresIn > 0) && (
-                <PrimaryBtn onClick={handleVoiceStartRecording}>Start Recording</PrimaryBtn>
+                <PrimaryBtn onClick={handleVoiceStartRecording}>{t('voice.startRecording')}</PrimaryBtn>
               )}
               {voiceIsRecording && (
-                <PrimaryBtn onClick={handleVoiceStopRecording}>Stop Recording</PrimaryBtn>
+                <PrimaryBtn onClick={handleVoiceStopRecording}>{t('voice.stopRecording')}</PrimaryBtn>
               )}
               {voiceHasRecording && !voiceIsRecording && !isProcessing && (
-                <PrimaryBtn onClick={handleVoiceSubmit}>Submit Voice</PrimaryBtn>
+                <PrimaryBtn onClick={handleVoiceSubmit}>{t('voice.submit')}</PrimaryBtn>
               )}
               {isProcessing && <div style={{ textAlign: 'center', padding: 8 }}><div className="mv-spinner" /></div>}
             </div>
@@ -1555,12 +1580,12 @@ const MobileVerificationPage: React.FC = () => {
             {stepError && (
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <p style={{ fontSize: 11, color: '#ef4444', fontFamily: 'var(--mono)' }}>{stepError}</p>
-                <PrimaryBtn onClick={resetVoiceState}>Try Again</PrimaryBtn>
+                <PrimaryBtn onClick={resetVoiceState}>{t('common.tryAgain')}</PrimaryBtn>
               </div>
             )}
             {voiceChallengeDigits && voiceExpiresIn !== null && voiceExpiresIn <= 0 && !stepError && (
               <div style={{ marginTop: 8, maxWidth: 280, margin: '8px auto 0' }}>
-                <PrimaryBtn onClick={() => { resetVoiceState(); handleVoiceChallenge(); }}>Request New Challenge</PrimaryBtn>
+                <PrimaryBtn onClick={() => { resetVoiceState(); handleVoiceChallenge(); }}>{t('voice.requestNew')}</PrimaryBtn>
               </div>
             )}
           </div>
@@ -1581,11 +1606,11 @@ const MobileVerificationPage: React.FC = () => {
                   borderTopColor: 'var(--accent)', borderRadius: '50%',
                   animation: 'spin 1s linear infinite', marginBottom: 18,
                 }} />
-                <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Processing your verification…</p>
+                <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{t('mobile.done.processing')}</p>
                 <p style={{
                   fontFamily: 'var(--mono)', fontSize: 11,
                   color: 'var(--mid)', letterSpacing: '0.08em',
-                }}>{isDocumentOnly ? 'Finalizing your verification' : 'Analyzing your live photo'}</p>
+                }}>{isDocumentOnly ? t('mobile.done.finalizing') : t('mobile.done.analyzingLive')}</p>
               </>
             ) : (() => {
               const status = finalResult.final_result ?? finalResult.status;
@@ -1596,25 +1621,25 @@ const MobileVerificationPage: React.FC = () => {
                 // Success state — the premium completion screen
                 const checklist = isAgeOnly
                   ? [
-                      'Document scanned',
-                      `Age requirement (${finalResult.age_verification?.age_threshold ?? ageThreshold ?? 18}+) met`,
+                      t('mobile.done.checkDocScanned'),
+                      t('mobile.done.checkAgeMet', { age: finalResult.age_verification?.age_threshold ?? ageThreshold ?? 18 }),
                     ]
                   : isDocumentOnly
                   ? [
-                      'Identity document verified',
-                      'Document details confirmed',
+                      t('mobile.done.checkDocVerified'),
+                      t('mobile.done.checkDetailsConfirmed'),
                     ]
                   : isIdentity
                   ? [
-                      'Identity document verified',
-                      'Liveness check passed',
-                      'Face matched successfully',
+                      t('mobile.done.checkDocVerified'),
+                      t('mobile.done.checkLiveness'),
+                      t('mobile.done.checkFaceMatch'),
                     ]
                   : [
-                      'Identity document verified',
-                      'Document details confirmed',
-                      'Liveness check passed',
-                      'Face matched successfully',
+                      t('mobile.done.checkDocVerified'),
+                      t('mobile.done.checkDetailsConfirmed'),
+                      t('mobile.done.checkLiveness'),
+                      t('mobile.done.checkFaceMatch'),
                     ];
                 return (
                   <>
@@ -1631,20 +1656,20 @@ const MobileVerificationPage: React.FC = () => {
                       fontFamily: 'var(--mono)', fontSize: 10,
                       textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--accent)',
                       marginBottom: 8,
-                    }}>{isAgeOnly ? 'Age verified' : isDocumentOnly ? 'Document verified' : 'Verification complete'}</span>
+                    }}>{isAgeOnly ? t('mobile.done.eyebrowAge') : isDocumentOnly ? t('mobile.done.eyebrowDocument') : t('mobile.done.eyebrowFull')}</span>
 
                     <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.025em', marginBottom: 8 }}>
-                      You're all set
+                      {t('mobile.done.title')}
                     </h1>
 
                     <p style={{ fontSize: 13, color: 'var(--mid)', lineHeight: 1.55, marginBottom: 24 }}>
                       {redirectUrl
-                        ? 'Verification complete. Redirecting you back…'
+                        ? t('mobile.done.redirectBody')
                         : isAgeOnly
-                        ? 'Your age has been verified. You can close this tab and return to your desktop.'
+                        ? t('mobile.done.bodyAge')
                         : isDocumentOnly
-                        ? 'Your document has been verified. You can close this tab and return to your desktop.'
-                        : 'Your identity has been verified. You can close this tab and return to your desktop.'}
+                        ? t('mobile.done.bodyDocument')
+                        : t('mobile.done.bodyFull')}
                     </p>
 
                     {/* Checklist */}
@@ -1669,13 +1694,13 @@ const MobileVerificationPage: React.FC = () => {
                         background: 'var(--flag-soft)', border: '1px solid var(--rule)',
                         padding: '8px 12px',
                       }}>
-                        Note: We couldn't notify your desktop automatically. Please refresh it to see your result.
+                        {t('mobile.done.patchFailed')}
                       </p>
                     )}
 
                     {redirectUrl && (
                       <p style={{ marginTop: 16, fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--mid)', letterSpacing: '0.04em' }}>
-                        Redirecting in 3 seconds…
+                        {t('common.redirectingEllipsis')}
                       </p>
                     )}
                   </>
@@ -1697,22 +1722,22 @@ const MobileVerificationPage: React.FC = () => {
 
                   <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.025em', marginBottom: 8 }}>
                     {isFailed
-                      ? isAgeOnly ? 'Age Verification Failed' : isDocumentOnly ? 'Document Verification Failed' : 'Verification Failed'
-                      : 'Under Review'}
+                      ? isAgeOnly ? t('mobile.done.failedAge') : isDocumentOnly ? t('mobile.done.failedDocument') : t('mobile.done.failedFull')
+                      : t('mobile.done.underReview')}
                   </h1>
 
                   <p style={{ fontSize: 13, color: 'var(--mid)', lineHeight: 1.55, marginBottom: 16 }}>
                     {isFailed
                       ? isAgeOnly
-                        ? (finalResult.message || 'Age verification could not be completed.')
-                        : 'We were unable to verify your identity. Please return to your desktop to see details.'
-                      : 'Your verification is being reviewed. You will be notified of the result.'}
+                        ? (finalResult.message || t('age.couldNotComplete'))
+                        : t('mobile.done.failedBody')
+                      : t('mobile.done.reviewBody')}
                   </p>
 
                   {isFailed && finalResult.retry_available === true && (
                     <div style={{ marginTop: 16, width: '100%', maxWidth: 320 }}>
                       <PrimaryBtn onClick={handleRetry} disabled={retryProcessing}>
-                        {retryProcessing ? 'Restarting…' : 'Try Again'}
+                        {retryProcessing ? t('common.restartingEllipsis') : t('common.tryAgain')}
                       </PrimaryBtn>
                     </div>
                   )}
@@ -1721,7 +1746,7 @@ const MobileVerificationPage: React.FC = () => {
                       marginTop: 16, fontSize: 11, color: 'var(--flag)',
                       fontFamily: 'var(--mono)',
                     }}>
-                      Maximum retry attempts reached.
+                      {t('common.maxRetries')}
                     </p>
                   )}
 
@@ -1732,13 +1757,13 @@ const MobileVerificationPage: React.FC = () => {
                       background: 'var(--flag-soft)', border: '1px solid var(--rule)',
                       padding: '8px 12px',
                     }}>
-                      Note: We couldn't notify your desktop automatically. Please refresh it to see your result.
+                      {t('mobile.done.patchFailed')}
                     </p>
                   )}
 
                   {redirectUrl && (
                     <p style={{ marginTop: 16, fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--mid)', letterSpacing: '0.04em' }}>
-                      Redirecting in 3 seconds…
+                      {t('common.redirectingEllipsis')}
                     </p>
                   )}
                 </>

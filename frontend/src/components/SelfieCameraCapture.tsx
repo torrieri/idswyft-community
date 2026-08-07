@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { computeLaplacianVariance } from '../utils/camera/computeLaplacianVariance';
 import { selfieCameraCss } from '../utils/camera/cameraAnimations';
 import { useCameraStream } from '../utils/camera/useCameraStream';
+import { useT, type TranslationKey } from '../i18n';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface SelfieCameraCaptureProps {
@@ -27,10 +28,10 @@ const STATUS_COLORS: Record<FaceStatus, string> = {
   ready:     '#00d4b4',
 };
 
-const GUIDANCE: Record<FaceStatus, string> = {
-  no_face:   'Position your face in the oval',
-  adjusting: 'Center your face\u2026 hold steady',
-  ready:     'Perfect! Capturing\u2026',
+const GUIDANCE_KEYS: Record<FaceStatus, TranslationKey> = {
+  no_face:   'selfiecam.guidance.noFace',
+  adjusting: 'selfiecam.guidance.adjusting',
+  ready:     'selfiecam.guidance.ready',
 };
 
 // ─── Skin-tone detection ──────────────────────────────────────────────────────
@@ -115,6 +116,7 @@ function analyzeFaceInOval(
 const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
   onCapture, onClose, onFallback,
 }) => {
+  const t = useT();
   const [state, setState] = useState<CameraState>('starting');
   const [faceStatus, setFaceStatus] = useState<FaceStatus>('no_face');
   const [showFlash, setShowFlash] = useState(false);
@@ -176,7 +178,7 @@ const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
       if (err.name === 'NotAllowedError' || err.name === 'NotFoundError') {
         onFallback();
       } else {
-        setError('Unable to access front camera. Please check permissions.');
+        setError(t('selfiecam.error.noAccess'));
       }
     });
 
@@ -343,7 +345,7 @@ const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
       video.srcObject = stream;
       video.play().then(() => { if (mountedRef.current) setState('streaming'); });
     }).catch(() => {
-      if (mountedRef.current) setError('Could not restart camera.');
+      if (mountedRef.current) setError(t('idcam.error.restartFailed'));
     });
   }, [capturedUrl]);
 
@@ -355,7 +357,7 @@ const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, padding: 32, textAlign: 'center', gap: 16 }}>
           <div style={{ fontSize: 48, opacity: 0.5 }}>!</div>
           <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#e8f4f8', lineHeight: 1.5 }}>{error}</p>
-          <button onClick={onClose} style={outlineBtnStyle}>Go Back</button>
+          <button onClick={onClose} style={outlineBtnStyle}>{t('common.goBack')}</button>
         </div>
       </div>
     );
@@ -364,10 +366,10 @@ const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
   // ── Render ──────────────────────────────────────────────────────────────
   const statusColor = warmingUp ? '#f59e0b' : STATUS_COLORS[faceStatus];
   const guidanceText = state === 'captured'
-    ? 'Photo captured!'
+    ? t('common.photoCaptured')
     : warmingUp
-      ? 'Position your face in the oval'
-      : GUIDANCE[faceStatus];
+      ? t('selfiecam.guidance.noFace')
+      : t(GUIDANCE_KEYS[faceStatus]);
 
   return (
     <div style={overlayStyle}>
@@ -396,7 +398,7 @@ const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
       {state === 'captured' && capturedUrl && (
         <img
           src={capturedUrl}
-          alt="Captured selfie"
+          alt={t('selfiecam.capturedAlt')}
           style={{
             position: 'absolute', inset: 0,
             width: '100%', height: '100%',
@@ -425,7 +427,7 @@ const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
         padding: '16px 20px', zIndex: 15,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <button onClick={onClose} style={{
+        <button onClick={onClose} aria-label={t('idcam.closeLabel')} style={{
           width: 40, height: 40, borderRadius: '50%',
           background: 'rgba(0,0,0,0.5)', border: 'none',
           color: '#e8f4f8', fontSize: 20, cursor: 'pointer',
@@ -442,7 +444,7 @@ const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
           padding: '6px 12px', borderRadius: 20,
           backdropFilter: 'blur(4px)',
         }}>
-          Selfie
+          {t('selfiecam.title')}
         </span>
 
         <div style={{ width: 40 }} />
@@ -463,7 +465,7 @@ const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
           textShadow: '0 1px 4px rgba(0,0,0,0.6)',
           animation: state === 'streaming' ? 'selfiePulse 2s ease infinite' : 'none',
         }}>
-          {state === 'starting' ? 'Starting camera\u2026' : guidanceText}
+          {state === 'starting' ? t('common.startingCamera') : guidanceText}
         </div>
 
         {/* Face quality bar */}
@@ -508,10 +510,10 @@ const SelfieCameraCapture: React.FC<SelfieCameraCaptureProps> = ({
         {state === 'captured' && (
           <div style={{ display: 'flex', gap: 12, width: '100%' }}>
             <button onClick={handleRetake} style={outlineBtnStyle}>
-              Retake
+              {t('common.retake')}
             </button>
             <button onClick={handleUse} style={tealBtnStyle}>
-              Use Photo
+              {t('common.usePhoto')}
             </button>
           </div>
         )}
