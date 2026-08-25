@@ -8,7 +8,7 @@ spec:
     - websecure
   routes:
     - kind: Rule
-      match: Host(`idswyft.tk.hv.orkapi.net`)
+      match: Host(`idswyft.orkapi.app`)
       services:
         - name: idswyft-frontend
           port: 8080
@@ -25,7 +25,7 @@ spec:
     - websecure
   routes:
     - kind: Rule
-      match: Host(`api.idswyft.tk.hv.orkapi.net`)
+      match: Host(`api.idswyft.orkapi.app`)
       services:
         - name: idswyft-api
           port: 3001

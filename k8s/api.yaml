@@ -44,9 +44,9 @@ spec:
             - name: ENGINE_URL
               value: "http://idswyft-engine:3002"
             - name: CORS_ORIGINS
-              value: "http://idswyft.tk.hv.orkapi.net,https://idswyft.tk.hv.orkapi.net"
+              value: "http://idswyft.orkapi.app,https://idswyft.orkapi.app"
             - name: FRONTEND_URL
-              value: "https://idswyft.tk.hv.orkapi.net"
+              value: "https://idswyft.orkapi.app"
             - name: NODE_ENV
               value: "production"
             - name: PORT
