@@ -1,7 +1,7 @@
 // Dynamic import — jimp is only available in dev mode or the Engine Worker
 let Jimp: any;
 import { statSync, readFileSync } from 'fs';
-import sizeOf from 'image-size';
+import sharp from 'sharp';
 import { SharpTamperDetector } from '@idswyft/shared';
 
 export interface DocumentQualityResult {
@@ -45,8 +45,9 @@ export class DocumentQualityService {
       const fileStats = statSync(filePath);
       const fileSize = fileStats.size;
 
-      // Get image dimensions using image-size (faster than loading full image)
-      const dimensions = sizeOf(filePath);
+      // Get image dimensions using sharp (faster than loading full image, no vulnerable dep)
+      const { width, height } = await sharp(filePath).metadata();
+      const dimensions = { width, height };
 
       // Load image with Jimp for analysis (dynamic import — optional dep)
       if (!Jimp) Jimp = (await import('jimp')).default;
