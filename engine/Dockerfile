@@ -29,7 +29,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy workspace root + package manifests (for npm workspace resolution)
-COPY package.json ./
+COPY package.json package-lock.json ./
+COPY frontend/package.json frontend/
+COPY backend/package.json backend/
 COPY shared/package.json shared/
 COPY engine/package.json engine/
 
