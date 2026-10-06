@@ -6,6 +6,7 @@
  */
 
 import { logger } from '@/utils/logger.js';
+import { resolveCjsModule } from '@/utils/cjsInterop.js';
 import { VERIFICATION_THRESHOLDS } from '@/config/verificationThresholds.js';
 import {
   VerificationFailureType,
@@ -32,10 +33,12 @@ try {
 }
 
 try {
-  ZXing = await import('@zxing/library');
+  ZXing = resolveCjsModule(await import('@zxing/library'), 'PlanarYUVLuminanceSource');
   logger.info('ZXing barcode library loaded for PDF417 detection');
 } catch (error) {
-  logger.warn('ZXing library not available, falling back to OCR-based detection');
+  logger.warn('ZXing library not available, falling back to OCR-based detection', {
+    error: error instanceof Error ? error.message : String(error),
+  });
 }
 
 export interface BarcodeResult {
