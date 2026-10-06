@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { API_BASE_URL } from '../config/api'
 import { fetchCsrfToken, getCsrfToken, csrfHeader, clearCsrfToken } from '../lib/csrf'
+import { truncateId, formatUserId, matchesVerificationSearch, ANONYMIZED_USER_LABEL } from '../lib/verificationDisplay'
 import { C, injectFonts } from '../theme'
 import '../styles/patterns.css'
 import {
@@ -30,7 +31,7 @@ import {
 
 interface Verification {
   id: string
-  user_id: string
+  user_id: string | null
   status: string
   document_type?: string
   created_at: string
@@ -74,7 +75,7 @@ interface DuplicateFlag {
 
 interface VerificationDetail {
   id: string
-  user_id: string
+  user_id: string | null
   status: string
   document_type?: string
   created_at: string
@@ -117,8 +118,6 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; border: string;
 }
 
 const getStatusConfig = (status: string) => STATUS_CONFIG[status] || STATUS_CONFIG.pending
-
-const truncateId = (id: string) => id.length > 12 ? `${id.slice(0, 6)}...${id.slice(-4)}` : id
 
 const formatDate = (iso: string) => {
   const d = new Date(iso)
@@ -331,10 +330,7 @@ export function VerificationManagement() {
 
   // ── Search filter (client-side on loaded page) ──
   const filtered = searchQuery
-    ? verifications.filter(v =>
-        v.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        v.user_id.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+    ? verifications.filter(v => matchesVerificationSearch(v, searchQuery))
     : verifications
 
   // ── Mobile guard ──
@@ -647,8 +643,8 @@ export function VerificationManagement() {
 
                   {/* User ID */}
                   <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <span style={{ color: C.muted, fontSize: 13, fontFamily: C.mono }} title={v.user_id}>
-                      {truncateId(v.user_id)}
+                    <span style={{ color: C.muted, fontSize: 13, fontFamily: C.mono }} title={v.user_id ?? ANONYMIZED_USER_LABEL}>
+                      {formatUserId(v.user_id)}
                     </span>
                   </div>
 
@@ -821,7 +817,7 @@ export function VerificationManagement() {
                               <tbody>
                                 {[
                                   ['Verification ID', detail.id],
-                                  ['User ID', detail.user_id],
+                                  ['User ID', detail.user_id ?? ANONYMIZED_USER_LABEL],
                                   ['Status', detail.status],
                                   ['Document Type', detail.document_type || '-'],
                                   ['Source', detail.source || 'api'],
