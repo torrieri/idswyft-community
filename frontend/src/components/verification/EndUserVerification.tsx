@@ -4,6 +4,7 @@ import { API_BASE_URL, parseApiError } from '../../config/api';
 import { sanitizeRedirectUrl } from '../../utils/redirect';
 import { ContinueOnPhone } from '../ContinueOnPhone';
 import { LiveCaptureWidget } from './LiveCaptureWidget';
+import { getFrontUploadOutcome } from '../../lib/frontUploadOutcome';
 import { useT, type TranslationKey } from '../../i18n';
 
 export interface VerificationProps {
@@ -245,6 +246,17 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         throw new Error(err || t('desktop.error.uploadFailed'));
       }
       const data = await res.json();
+      const outcome = getFrontUploadOutcome(data);
+      if (outcome.kind === 'retake') {
+        toast.error(t('mobile.error.retakeId', { retries: outcome.retriesLeft }));
+        setFrontFile(null);
+        setFrontPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+        return;
+      }
+      if (outcome.kind === 'final') {
+        showFinalResult(data);
+        return;
+      }
       // Age-only mode: front-document response includes final_result directly
       if (isAgeOnly && data.age_verification) {
         showFinalResult(data);

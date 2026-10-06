@@ -363,6 +363,7 @@ export const en = {
     'Could not reach the verification server. Make sure your phone and computer are on the same Wi-Fi network, then scan the QR code again.',
   'mobile.error.startFailed': 'Failed to start verification',
   'mobile.error.uploadFailed': 'Upload failed',
+  'mobile.error.retakeId': "We couldn't read your ID. Please retake the photo in good lighting ({retries} attempt(s) left).",
   'mobile.error.blurryId':
     'The photo of your ID is not clear enough. Please retake it in good lighting.',
   'mobile.error.ocrTimeout': 'OCR timed out. Please try again.',

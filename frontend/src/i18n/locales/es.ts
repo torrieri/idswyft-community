@@ -357,6 +357,7 @@ export const es: Catalog = {
     'No pudimos conectar con el servidor de verificación. Asegúrate de que tu teléfono y tu computadora estén en la misma red Wi-Fi y vuelve a escanear el código QR.',
   'mobile.error.startFailed': 'No se pudo iniciar la verificación',
   'mobile.error.uploadFailed': 'No se pudo subir el archivo',
+  'mobile.error.retakeId': "No pudimos leer tu documento. Toma otra foto con buena luz ({retries} intento(s) restante(s)).",
   'mobile.error.blurryId':
     'La foto de tu documento no se ve con suficiente claridad. Vuelve a tomarla con buena luz.',
   'mobile.error.ocrTimeout': 'La lectura del documento tardó demasiado. Inténtalo de nuevo.',

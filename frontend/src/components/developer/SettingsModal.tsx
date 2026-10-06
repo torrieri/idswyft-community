@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { API_BASE_URL } from '../../config/api'
 import { csrfHeader, clearCsrfToken } from '../../lib/csrf'
 import { C } from '../../theme'
+import { VerificationPolicySection } from './VerificationPolicySection'
 import {
   Cog6ToothIcon,
   UserCircleIcon,
@@ -1223,7 +1224,12 @@ export function SettingsModal({ token, onClose, onAccountDeleted }: SettingsModa
                     )}
                   </div>
 
-                  {/* Divider between AML and Duplicate Detection */}
+                  {/* Divider between AML and Verification Policy */}
+                  <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 24, paddingTop: 20 }} />
+
+                  <VerificationPolicySection authHeaders={authHeaders} />
+
+                  {/* Divider between Verification Policy and Duplicate Detection */}
                   <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 24, paddingTop: 20 }} />
 
                   {/* Duplicate Detection */}

@@ -7,6 +7,7 @@ import SelfieCameraCapture from '../components/SelfieCameraCapture';
 import { ActiveLivenessCapture } from '../components/liveness/ActiveLivenessCapture';
 import type { LivenessMetadata } from '../hooks/useActiveLiveness';
 import { resolveThemeVars } from '../components/verification/theme';
+import { getFrontUploadOutcome } from '../lib/frontUploadOutcome';
 import type { PageBuilderConfig } from '../components/verification/types';
 import { useT, useLocale, type TranslationKey } from '../i18n';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
@@ -642,13 +643,17 @@ const MobileVerificationPage: React.FC = () => {
       if (!mountedRef.current) return;
       const data = await res.json().catch(() => null);
 
-      // Gate 1 may hard-reject (e.g. image too blurry for OCR) — let user retake
-      if (data?.rejection_reason) {
-        setStepError(data.message || t('mobile.error.blurryId'));
+      const outcome = getFrontUploadOutcome(data);
+      if (outcome.kind === 'retake') {
+        setStepError(t('mobile.error.retakeId', { retries: outcome.retriesLeft }));
         setFrontFile(null);
         // Updater form: uploadFront runs in the same tick that set the new preview,
         // so the closure's frontPreviewUrl is stale.
         setFrontPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+        return;
+      }
+      if (outcome.kind === 'final') {
+        showFinalResult(data);
         return;
       }
 
