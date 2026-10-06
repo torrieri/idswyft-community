@@ -18,6 +18,7 @@ import multer from 'multer';
 import sharp from 'sharp';
 import { logger } from '@/utils/logger.js';
 import { OCRService } from '@/services/ocr.js';
+import { prepareImageForOcr, type PreparedOcrImage } from '@/services/ocrImagePrep.js';
 import { BarcodeService } from '@/services/barcode.js';
 import { FaceRecognitionService } from '@/services/faceRecognition.js';
 import { extractMRZFromText, detectMRZInText, alpha3ToAlpha2 } from '@/services/mrz.js';
@@ -130,6 +131,24 @@ async function extractWithOrientation(
     base = original;
   }
 
+  // OCR reads from an upscaled copy when the capture is small; face and tamper
+  // analysis keep the original pixels (see ocrImagePrep).
+  let prepared: PreparedOcrImage;
+  try {
+    prepared = await prepareImageForOcr(base);
+  } catch (err) {
+    logger.warn('OCR image preparation failed, using original image', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    prepared = { buffer: base, originalWidth: 0, originalHeight: 0, upscaled: false };
+  }
+  logger.info('Document image received for OCR', {
+    width: prepared.originalWidth,
+    height: prepared.originalHeight,
+    bytes: original.length,
+    upscaledForOcr: prepared.upscaled,
+  });
+
   // 270° first among the rotations: portrait photos of landscape documents are the
   // common real-world case and land here.
   const angles = [0, 270, 90, 180];
@@ -137,9 +156,13 @@ async function extractWithOrientation(
 
   for (const angle of angles) {
     let candidate = base;
+    let ocrCandidate = prepared.buffer;
     if (angle !== 0) {
       try {
         candidate = await sharp(base).rotate(angle).toBuffer();
+        ocrCandidate = prepared.upscaled
+          ? await sharp(prepared.buffer).rotate(angle).toBuffer()
+          : candidate;
       } catch {
         continue;
       }
@@ -147,7 +170,7 @@ async function extractWithOrientation(
 
     let ocr: any = null;
     try {
-      ocr = await ocrService.processDocumentFromBuffer(candidate, documentType, issuingCountry, llmConfig);
+      ocr = await ocrService.processDocumentFromBuffer(ocrCandidate, documentType, issuingCountry, llmConfig);
     } catch {
       continue;
     }
