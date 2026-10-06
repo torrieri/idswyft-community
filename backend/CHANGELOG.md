@@ -5,6 +5,15 @@ All notable changes to the Idswyft Main API are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.20] - 2026-10-06
+
+### Fixed
+- **Admin verification list crash on anonymized records** (`frontend`): GDPR
+  erasure nulls `verification_requests.user_id`, which made `/admin/verifications`
+  throw `Cannot read properties of null (reading 'length')` for any reviewer whose
+  scope contained an erased verification. The list, search and detail view now
+  render missing user IDs as "Anonymized".
+
 ## [1.12.19] - 2026-07-26
 
 UK (DVLA) driving-licence recognition — deterministic extraction hardening so UK
