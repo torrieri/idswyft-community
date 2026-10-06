@@ -5,6 +5,14 @@ All notable changes to the Idswyft Main API are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.22] - 2026-10-06
+
+### Fixed
+- **Docker images**: the api and engine images built since the npm-workspace
+  change crashed at startup (`ERR_MODULE_NOT_FOUND: dotenv`) because
+  workspace-local `node_modules` were not copied into the runtime stage. 1.12.21
+  api/engine images are affected and must not be deployed.
+
 ## [1.12.21] - 2026-10-06
 
 Make ID capture less painful: fewer clicks, more readable photos, and a way to
