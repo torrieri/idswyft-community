@@ -58,7 +58,15 @@ export interface StepResult {
   user_message: string | null;
   retryable?: boolean;
   retries_left?: number;
+  /** Gate failed on an unreadable document and the session now ends in manual review */
+  escalated_to_manual_review?: boolean;
 }
+
+/** What to do when the front document cannot be read once retries are used up */
+export type UnreadableDocumentAction = 'reject' | 'manual_review';
+
+// Gate 1 failures that mean "we could not read the photo", not "the document looks fraudulent"
+const UNREADABLE_DOCUMENT_REASONS: ReadonlySet<string> = new Set(['FRONT_OCR_FAILED', 'FRONT_LOW_CONFIDENCE']);
 
 /** Age verification result — never exposes actual DOB */
 export interface AgeVerificationResult {
@@ -117,6 +125,7 @@ export interface SessionHydration {
 export interface SessionOptions {
   forceManualReview?: boolean;
   maxGateRetries?: number;
+  unreadableDocumentAction?: UnreadableDocumentAction;
 }
 
 export class VerificationSession {
@@ -126,12 +135,15 @@ export class VerificationSession {
   private forceManualReview: boolean;
   private maxGateRetries: number;
   private gateRetryCount: number;
+  private unreadableDocumentAction: UnreadableDocumentAction;
 
   constructor(deps: SessionDeps, hydration?: SessionHydration, flow?: FlowConfig, options: SessionOptions = {}) {
     this.deps = deps;
     this.flow = flow ?? FLOW_PRESETS.full;
-    this.forceManualReview = options.forceManualReview ?? false;
+    // A session escalated in an earlier request must stay in manual-review mode
+    this.forceManualReview = options.forceManualReview === true || hydration?.force_manual_review === true;
     this.maxGateRetries = options.maxGateRetries ?? 0;
+    this.unreadableDocumentAction = options.unreadableDocumentAction ?? 'reject';
     this.gateRetryCount = hydration?.gate_retry_count ?? 0;
     const now = new Date().toISOString();
     this.state = {
@@ -151,7 +163,7 @@ export class VerificationSession {
       velocity_analysis: hydration?.velocity_analysis ?? null,
       geo_analysis: hydration?.geo_analysis ?? null,
       voice_match: hydration?.voice_match ?? null,
-      force_manual_review: hydration?.force_manual_review ?? this.forceManualReview,
+      force_manual_review: this.forceManualReview,
       gate_retry_count: this.gateRetryCount,
       created_at: hydration?.created_at ?? now,
       updated_at: now,
@@ -221,11 +233,13 @@ export class VerificationSession {
     const gate = evaluateGate1(frontResult);
 
     if (!gate.passed) {
-      const result = this.hardReject(gate);
+      const result = this.hardReject(gate, VerificationStatus.AWAITING_FRONT);
       if (result.passed && this.forceManualReview) {
         this.state.front_extraction = frontResult;
         this.transition(VerificationStatus.COMPLETE);
         this.state.completed_at = new Date().toISOString();
+        // Age could not be read: unconfirmed until a reviewer decides (same as DOB_NOT_FOUND)
+        return { ...result, age_verification: { is_of_age: false, age_threshold: ageThreshold } };
       }
       return result;
     }
@@ -590,6 +604,12 @@ export class VerificationSession {
       };
     }
 
+    if (this.shouldEscalateToManualReview(gate)) {
+      this.forceManualReview = true;
+      this.state.force_manual_review = true;
+      return { ...this.softReject(gate), escalated_to_manual_review: true };
+    }
+
     this.state.rejection_reason = gate.rejection_reason as any;
     this.state.rejection_detail = gate.rejection_detail;
     this.transition(VerificationStatus.HARD_REJECTED);
@@ -599,6 +619,11 @@ export class VerificationSession {
       rejection_detail: gate.rejection_detail,
       user_message: gate.user_message,
     };
+  }
+
+  private shouldEscalateToManualReview(gate: GateResult): boolean {
+    return this.unreadableDocumentAction === 'manual_review'
+      && UNREADABLE_DOCUMENT_REASONS.has(gate.rejection_reason ?? '');
   }
 
   /**

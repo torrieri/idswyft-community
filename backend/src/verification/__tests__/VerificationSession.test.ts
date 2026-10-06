@@ -689,3 +689,169 @@ describe('VerificationSession — gateRetry', () => {
     expect(session.getState().current_step).toBe(VerificationStatus.HARD_REJECTED);
   });
 });
+
+describe('VerificationSession — unreadableDocumentAction', () => {
+  const unreadableFront: FrontExtractionResult = {
+    ...mockFrontResult,
+    ocr: { ...mockFrontResult.ocr, full_name: '', date_of_birth: '', id_number: '', expiry_date: '' },
+    ocr_confidence: 0.1,
+  };
+
+  function sessionWith(options: ConstructorParameters<typeof VerificationSession>[3], hydration?: ConstructorParameters<typeof VerificationSession>[1]) {
+    return new VerificationSession({
+      extractFront: mockExtractFront,
+      extractBack: mockExtractBack,
+      processLiveCapture: mockProcessLiveCapture,
+      computeFaceMatch: mockComputeFaceMatch,
+      faceMatchThreshold: 0.60,
+    }, hydration, undefined, options);
+  }
+
+  it('escalates an unreadable front document to manual review and keeps the flow going', async () => {
+    mockExtractFront.mockResolvedValue(unreadableFront);
+    const session = sessionWith({ unreadableDocumentAction: 'manual_review' });
+
+    const result = await session.submitFront(Buffer.from('front'));
+
+    expect(result.passed).toBe(true);
+    expect(result.escalated_to_manual_review).toBe(true);
+    expect(session.getState().current_step).toBe(VerificationStatus.AWAITING_BACK);
+    expect(session.getState().rejection_reason).toBe('FRONT_OCR_FAILED');
+    expect(session.getState().force_manual_review).toBe(true);
+  });
+
+  it('uses the remaining retries before escalating to manual review', async () => {
+    mockExtractFront.mockResolvedValue(unreadableFront);
+    const session = sessionWith({ unreadableDocumentAction: 'manual_review', maxGateRetries: 1 });
+
+    const first = await session.submitFront(Buffer.from('front'));
+    const second = await session.submitFront(Buffer.from('front'));
+
+    expect(first.retryable).toBe(true);
+    expect(first.retries_left).toBe(0);
+    expect(second.passed).toBe(true);
+    expect(second.escalated_to_manual_review).toBe(true);
+  });
+
+  it('soft-fails later gates once the session was escalated', async () => {
+    mockExtractFront.mockResolvedValue(unreadableFront);
+    mockComputeFaceMatch.mockReturnValue({ similarity_score: 0.30, passed: false, threshold_used: 0.60 });
+    const session = sessionWith({ unreadableDocumentAction: 'manual_review' });
+
+    await session.submitFront(Buffer.from('front'));
+    await session.submitBack(Buffer.from('back'));
+    const result = await session.submitLiveCapture(Buffer.from('live'));
+
+    expect(result.passed).toBe(true);
+    expect(session.getState().current_step).toBe(VerificationStatus.COMPLETE);
+  });
+
+  it('still hard-rejects non-OCR gate failures when the session was not escalated', async () => {
+    mockComputeFaceMatch.mockReturnValue({ similarity_score: 0.30, passed: false, threshold_used: 0.60 });
+    const session = sessionWith({ unreadableDocumentAction: 'manual_review' });
+
+    await session.submitFront(Buffer.from('front'));
+    await session.submitBack(Buffer.from('back'));
+    const result = await session.submitLiveCapture(Buffer.from('live'));
+
+    expect(result.passed).toBe(false);
+    expect(session.getState().current_step).toBe(VerificationStatus.HARD_REJECTED);
+  });
+
+  it('keeps rejecting unreadable documents by default', async () => {
+    mockExtractFront.mockResolvedValue(unreadableFront);
+    const session = sessionWith({});
+
+    const result = await session.submitFront(Buffer.from('front'));
+
+    expect(result.passed).toBe(false);
+    expect(result.escalated_to_manual_review).toBeUndefined();
+    expect(session.getState().current_step).toBe(VerificationStatus.HARD_REJECTED);
+  });
+});
+
+describe('VerificationSession — options survive hydration', () => {
+  function hydratedSession(options: ConstructorParameters<typeof VerificationSession>[3], hydration: ConstructorParameters<typeof VerificationSession>[1]) {
+    return new VerificationSession({
+      extractFront: mockExtractFront,
+      extractBack: mockExtractBack,
+      processLiveCapture: mockProcessLiveCapture,
+      computeFaceMatch: mockComputeFaceMatch,
+      faceMatchThreshold: 0.60,
+    }, hydration, undefined, options);
+  }
+
+  it('counts retries already used in earlier requests', async () => {
+    mockExtractFront.mockResolvedValue({
+      ...mockFrontResult,
+      ocr: { ...mockFrontResult.ocr, full_name: '', date_of_birth: '', id_number: '', expiry_date: '' },
+      ocr_confidence: 0.1,
+    });
+    const session = hydratedSession({ maxGateRetries: 1 }, {
+      session_id: 'sess-1',
+      current_step: VerificationStatus.AWAITING_FRONT,
+      gate_retry_count: 1,
+    });
+
+    const result = await session.submitFront(Buffer.from('front'));
+
+    expect(result.retryable).toBeUndefined();
+    expect(session.getState().current_step).toBe(VerificationStatus.HARD_REJECTED);
+  });
+
+  it('stays in manual-review mode after an earlier escalation', async () => {
+    mockComputeFaceMatch.mockReturnValue({ similarity_score: 0.30, passed: false, threshold_used: 0.60 });
+    const session = hydratedSession({}, {
+      session_id: 'sess-2',
+      current_step: VerificationStatus.AWAITING_BACK,
+      front_extraction: mockFrontResult,
+      force_manual_review: true,
+    });
+
+    await session.submitBack(Buffer.from('back'));
+    const result = await session.submitLiveCapture(Buffer.from('live'));
+
+    expect(result.passed).toBe(true);
+    expect(session.getState().current_step).toBe(VerificationStatus.COMPLETE);
+  });
+});
+
+describe('VerificationSession — unreadable documents in age_only mode', () => {
+  const unreadableFront: FrontExtractionResult = {
+    ...mockFrontResult,
+    ocr: { ...mockFrontResult.ocr, full_name: '', date_of_birth: '', id_number: '', expiry_date: '' },
+    ocr_confidence: 0.1,
+  };
+
+  function ageOnlySession(options: ConstructorParameters<typeof VerificationSession>[3]) {
+    return new VerificationSession({
+      extractFront: mockExtractFront,
+      extractBack: mockExtractBack,
+      processLiveCapture: mockProcessLiveCapture,
+      computeFaceMatch: mockComputeFaceMatch,
+      faceMatchThreshold: 0.60,
+    }, undefined, FLOW_PRESETS.age_only, options);
+  }
+
+  it('honours max_gate_retries before giving up', async () => {
+    mockExtractFront.mockResolvedValue(unreadableFront);
+    const session = ageOnlySession({ maxGateRetries: 1 });
+
+    const result = await session.submitFrontAgeOnly(Buffer.from('front'), 18);
+
+    expect(result.retryable).toBe(true);
+    expect(session.getState().current_step).toBe(VerificationStatus.AWAITING_FRONT);
+  });
+
+  it('completes for manual review with an unconfirmed age when escalated', async () => {
+    mockExtractFront.mockResolvedValue(unreadableFront);
+    const session = ageOnlySession({ unreadableDocumentAction: 'manual_review' });
+
+    const result = await session.submitFrontAgeOnly(Buffer.from('front'), 18);
+
+    expect(result.passed).toBe(true);
+    expect(result.escalated_to_manual_review).toBe(true);
+    expect(result.age_verification).toEqual({ is_of_age: false, age_threshold: 18 });
+    expect(session.getState().current_step).toBe(VerificationStatus.COMPLETE);
+  });
+});

@@ -70,7 +70,8 @@ Content-Type: application/json
 | verification_mode | string | No | Flow preset: \`'full'\` (default), \`'document_only'\`, \`'identity'\`, or \`'age_only'\`. See Verification Flows below |
 | age_threshold | integer | No | Minimum age required (1-99, default: 18). Only used when \`verification_mode\` is \`'age_only'\` |
 | force_manual_review | boolean | No | Force every gate in this session to soft-fail instead of hard-rejecting — the pipeline always runs to completion and lands in \`manual_review\` rather than \`failed\`, even on a fully clean pass. This is a blunt, session-wide override; for automatic per-condition control, use a Compliance Rule action instead (see Compliance Rules below) |
-| max_gate_retries | integer | No | 0-5 (default: 0). Number of times a retryable gate failure may be retried in place before falling through to a hard reject |
+| max_gate_retries | integer | No | 0-5 (default: developer portal setting, else 0). Number of times a retryable gate failure may be retried in place before the fallback below applies |
+| unreadable_document_action | string | No | \`reject\` or \`manual_review\` (default: developer portal setting, else \`reject\`). What happens when the front document still cannot be read after the retries: \`reject\` hard-rejects the session; \`manual_review\` lets the user continue and finishes the verification in \`manual_review\` with all captured images for a reviewer |
 
 **Response (201):**
 

@@ -48,7 +48,13 @@ import { broadcastStatusChange } from '@/services/realtime.js';
 import { saveSessionState, loadSessionState } from '@/services/sessionPersistence.js';
 
 import { VerificationSession } from '@/verification/session/VerificationSession.js';
-import type { SessionDeps, SessionHydration, AgeVerificationResult } from '@/verification/session/VerificationSession.js';
+import type { SessionDeps, SessionHydration, AgeVerificationResult, UnreadableDocumentAction } from '@/verification/session/VerificationSession.js';
+import {
+  resolveGateFailurePolicy,
+  gateFailurePolicyFromAddons,
+  MAX_GATE_RETRIES_LIMIT,
+  UNREADABLE_DOCUMENT_ACTIONS,
+} from '@/verification/session/gateFailurePolicy.js';
 import { computeFaceMatch } from '@/verification/face/faceMatchService.js';
 import { mapStatusForResponse, buildVerificationResponse } from '@/verification/statusReader.js';
 import { SessionFlowError } from '@/verification/exceptions.js';
@@ -102,10 +108,25 @@ interface VerificationAddons {
   aml_screening?: boolean;
   address_verification?: boolean;
   force_manual_review?: boolean;
+  max_gate_retries?: number;
+  unreadable_document_action?: UnreadableDocumentAction;
+}
+
+/** Route the rest of the session to a human reviewer (read back by every later step) */
+async function markSessionForManualReview(verificationId: string): Promise<void> {
+  const { data: row } = await supabase.from('verification_requests').select('addons').eq('id', verificationId).single();
+  const { error } = await supabase
+    .from('verification_requests')
+    .update({ addons: { ...(row?.addons || {}), compliance_force_manual_review: true } })
+    .eq('id', verificationId);
+  if (error) {
+    logger.error('Failed to mark verification for manual review', { verificationId, error: error.message });
+    throw new Error('Failed to mark verification for manual review');
+  }
 }
 
 /** Create a VerificationSession with real service deps, optionally hydrated from DB */
-function createSession(isSandbox: boolean, hydration?: SessionHydration, addons?: VerificationAddons, developerAmlEnabled?: boolean, flow?: FlowConfig, voiceAuthEnabled?: boolean, maxGateRetries?: number): VerificationSession {
+function createSession(isSandbox: boolean, hydration?: SessionHydration, addons?: VerificationAddons, developerAmlEnabled?: boolean, flow?: FlowConfig, voiceAuthEnabled?: boolean): VerificationSession {
   // AML auto-triggers when: providers configured, not sandbox, developer hasn't disabled, addon not explicitly false
   const amlEnabled = amlProviders.length > 0
     && !isSandbox
@@ -133,9 +154,11 @@ function createSession(isSandbox: boolean, hydration?: SessionHydration, addons?
     voiceMatchThreshold: isSandbox ? 0.50 : 0.55,
   };
 
+  const gateFailurePolicy = gateFailurePolicyFromAddons(addons);
   const options = {
     forceManualReview: (addons as any)?.force_manual_review === true || (addons as any)?.compliance_force_manual_review === true,
-    maxGateRetries: maxGateRetries ?? 0,
+    maxGateRetries: gateFailurePolicy.maxGateRetries,
+    unreadableDocumentAction: gateFailurePolicy.unreadableDocumentAction,
   };
 
   return new VerificationSession(deps, hydration, flow, options);
@@ -161,6 +184,8 @@ async function hydrateSession(verificationId: string, isSandbox: boolean, develo
     velocity_analysis: (savedState as any).velocity_analysis ?? null,
     geo_analysis: (savedState as any).geo_analysis ?? null,
     voice_match: (savedState as any).voice_match ?? null,
+    force_manual_review: savedState.force_manual_review,
+    gate_retry_count: savedState.gate_retry_count,
     created_at: savedState.created_at,
     completed_at: savedState.completed_at,
   } : {
@@ -822,7 +847,8 @@ router.post('/initialize',
     body('verification_mode').optional().isIn(['full', 'document_only', 'identity', 'age_only']).withMessage('verification_mode must be "full", "document_only", "identity", or "age_only"'),
     body('age_threshold').optional().isInt({ min: 1, max: 99 }).withMessage('age_threshold must be an integer between 1 and 99'),
     body('force_manual_review').optional().isBoolean().withMessage('force_manual_review must be a boolean'),
-    body('max_gate_retries').optional().isInt({ min: 0, max: 5 }).withMessage('max_gate_retries must be 0-5'),
+    body('max_gate_retries').optional().isInt({ min: 0, max: MAX_GATE_RETRIES_LIMIT }).toInt().withMessage(`max_gate_retries must be 0-${MAX_GATE_RETRIES_LIMIT}`),
+    body('unreadable_document_action').optional().isIn([...UNREADABLE_DOCUMENT_ACTIONS]).withMessage(`unreadable_document_action must be one of: ${UNREADABLE_DOCUMENT_ACTIONS.join(', ')}`),
   ],
   validate,
   catchAsync(async (req: Request, res: Response) => {
@@ -893,6 +919,22 @@ router.post('/initialize',
       (resolvedAddons as any).force_manual_review = true;
     }
 
+    // Gate-failure policy: request params override the developer's portal defaults.
+    // Persisted in addons because every later step rebuilds the session from the DB.
+    const { data: developerPolicy, error: developerPolicyError } = await supabase
+      .from('developers')
+      .select('max_gate_retries, unreadable_document_action')
+      .eq('id', developerId)
+      .single();
+    if (developerPolicyError) {
+      logger.warn('Could not load developer gate-failure defaults, using safe defaults', {
+        developerId, error: developerPolicyError.message,
+      });
+    }
+    const gateFailurePolicy = resolveGateFailurePolicy(req.body, developerPolicy);
+    resolvedAddons.max_gate_retries = gateFailurePolicy.maxGateRetries;
+    resolvedAddons.unreadable_document_action = gateFailurePolicy.unreadableDocumentAction;
+
     // Recompute ageThreshold using resolvedMode in case compliance changed the mode
     const resolvedAgeThreshold: number | null = resolvedMode === 'age_only'
       ? (req.body.age_threshold ?? 18)
@@ -935,7 +977,7 @@ router.post('/initialize',
 
     // Create session and save initial state
     const issuingCountryUpper = issuing_country?.toUpperCase() || null;
-    const session = createSession(isSandbox, { session_id: verificationRecord.id, issuing_country: issuingCountryUpper }, resolvedAddons, undefined, flow, undefined, req.body.max_gate_retries);
+    const session = createSession(isSandbox, { session_id: verificationRecord.id, issuing_country: issuingCountryUpper }, resolvedAddons, undefined, flow, undefined);
     await saveSessionState(verificationRecord.id, session.getState());
 
     logVerificationEvent('verification_initialized', verificationRecord.id, {
@@ -1253,8 +1295,7 @@ router.post('/:verification_id/front-document',
         confidence: 1.0,
         tampering_detected: false
       };
-      const { data: vrRow } = await supabase.from('verification_requests').select('addons').eq('id', verification_id).single();
-      await supabase.from('verification_requests').update({ addons: { ...(vrRow?.addons || {}), compliance_force_manual_review: true } }).eq('id', verification_id);
+      await markSessionForManualReview(verification_id);
     } else {
       frontResult = engineClient.isEnabled()
         ? await engineClient.extractFront(req.file.buffer, { documentId: document.id, documentType: document_type, issuingCountry: resolvedCountry, verificationId: verification_id, llmConfig })
@@ -1319,6 +1360,15 @@ router.post('/:verification_id/front-document',
       ageVerification = ageResult.age_verification;
     } else {
       stepResult = await session.submitFront(req.file.buffer);
+    }
+
+    // Persist the escalation before the session state: if this write fails, the saved
+    // session is still on the front step and the client can simply retry the upload.
+    if (stepResult.escalated_to_manual_review) {
+      await markSessionForManualReview(verification_id);
+      logger.info('Unreadable front document escalated to manual review', {
+        verification_id, rejection_reason: session.getState().rejection_reason,
+      });
     }
 
     await saveSessionState(verification_id, session.getState());

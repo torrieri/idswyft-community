@@ -6,6 +6,11 @@ import { catchAsync, ValidationError } from '@/middleware/errorHandler.js';
 import { validate } from '@/middleware/validate.js';
 import { config } from '@/config/index.js';
 import { resolvePublicAssetUrl } from '@/services/storage.js';
+import {
+  resolveGateFailurePolicy,
+  MAX_GATE_RETRIES_LIMIT,
+  UNREADABLE_DOCUMENT_ACTIONS,
+} from '@/verification/session/gateFailurePolicy.js';
 import { encryptSecret, decryptSecret, maskApiKey } from '@idswyft/shared';
 
 const router = express.Router();
@@ -394,6 +399,60 @@ router.put('/settings/aml',
     }
 
     res.json({ success: true, enabled });
+  })
+);
+
+// ─── Verification Policy (gate retries / unreadable documents) ─────
+
+router.get('/settings/verification-policy',
+  authenticateDashboard,
+  catchAsync(async (req: Request, res: Response) => {
+    const developerId = (req as any).developer.id;
+
+    const { data } = await supabase
+      .from('developers')
+      .select('max_gate_retries, unreadable_document_action')
+      .eq('id', developerId)
+      .single();
+
+    const policy = resolveGateFailurePolicy({}, data);
+    res.json({
+      max_gate_retries: policy.maxGateRetries,
+      unreadable_document_action: policy.unreadableDocumentAction,
+    });
+  })
+);
+
+router.put('/settings/verification-policy',
+  authenticateDashboard,
+  [
+    body('max_gate_retries')
+      .isInt({ min: 0, max: MAX_GATE_RETRIES_LIMIT })
+      .withMessage(`max_gate_retries must be 0-${MAX_GATE_RETRIES_LIMIT}`),
+    body('unreadable_document_action')
+      .isIn([...UNREADABLE_DOCUMENT_ACTIONS])
+      .withMessage(`unreadable_document_action must be one of: ${UNREADABLE_DOCUMENT_ACTIONS.join(', ')}`),
+  ],
+  validate,
+  catchAsync(async (req: Request, res: Response) => {
+    const developerId = (req as any).developer.id;
+    const maxGateRetries = Number(req.body.max_gate_retries);
+    const unreadableDocumentAction = req.body.unreadable_document_action;
+
+    const { error } = await supabase
+      .from('developers')
+      .update({ max_gate_retries: maxGateRetries, unreadable_document_action: unreadableDocumentAction })
+      .eq('id', developerId);
+
+    if (error) {
+      return res.status(500).json({ error: 'Failed to save verification policy' });
+    }
+
+    res.json({
+      success: true,
+      max_gate_retries: maxGateRetries,
+      unreadable_document_action: unreadableDocumentAction,
+    });
   })
 );
 
