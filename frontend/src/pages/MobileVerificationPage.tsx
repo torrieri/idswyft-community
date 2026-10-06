@@ -569,6 +569,7 @@ const MobileVerificationPage: React.FC = () => {
     setFrontFile(file);
     setFrontPreviewUrl(URL.createObjectURL(file));
     setStepError(null);
+    uploadFront(file);
   };
 
   // ── Guided camera callbacks ─────────────────────────────────────────────
@@ -577,19 +578,23 @@ const MobileVerificationPage: React.FC = () => {
     setShowCamera(true);
   }, []);
 
-  const handleCameraCapture = useCallback((file: File) => {
+  // Not memoised on purpose: it must call the current uploadFront/uploadBack so the
+  // upload uses the latest document type and session state.
+  const handleCameraCapture = (file: File) => {
     setShowCamera(false);
+    setStepError(null);
     if (cameraVariant === 'front') {
       if (frontPreviewUrl) URL.revokeObjectURL(frontPreviewUrl);
       setFrontFile(file);
       setFrontPreviewUrl(URL.createObjectURL(file));
+      uploadFront(file);
     } else {
       if (backPreviewUrl) URL.revokeObjectURL(backPreviewUrl);
       setBackFile(file);
       setBackPreviewUrl(URL.createObjectURL(file));
+      uploadBack(file);
     }
-    setStepError(null);
-  }, [cameraVariant, frontPreviewUrl, backPreviewUrl]);
+  };
 
   const handleCameraClose = useCallback(() => {
     setShowCamera(false);
@@ -622,14 +627,14 @@ const MobileVerificationPage: React.FC = () => {
     setTimeout(() => document.getElementById('mv-selfie-upload')?.click(), 100);
   }, []);
 
-  const uploadFront = async () => {
-    if (!frontFile || !verificationId || !token) return;
+  const uploadFront = async (file: File) => {
+    if (!verificationId || !token) return;
     setIsProcessing(true);
     setStepError(null);
     try {
       const fd = new FormData();
       fd.append('document_type', documentType);
-      fd.append('document', frontFile);
+      fd.append('document', file);
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/front-document`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
@@ -641,8 +646,9 @@ const MobileVerificationPage: React.FC = () => {
       if (data?.rejection_reason) {
         setStepError(data.message || t('mobile.error.blurryId'));
         setFrontFile(null);
-        if (frontPreviewUrl) URL.revokeObjectURL(frontPreviewUrl);
-        setFrontPreviewUrl(null);
+        // Updater form: uploadFront runs in the same tick that set the new preview,
+        // so the closure's frontPreviewUrl is stale.
+        setFrontPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
         return;
       }
 
@@ -717,15 +723,16 @@ const MobileVerificationPage: React.FC = () => {
     setBackFile(file);
     setBackPreviewUrl(URL.createObjectURL(file));
     setStepError(null);
+    uploadBack(file);
   };
 
-  const uploadBack = async () => {
-    if (!backFile || !verificationId || !token) return;
+  const uploadBack = async (file: File) => {
+    if (!verificationId || !token) return;
     setIsProcessing(true);
     setStepError(null);
     try {
       const fd = new FormData();
-      fd.append('document', backFile);
+      fd.append('document', file);
       fd.append('document_type', documentType);
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/back-document`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
@@ -1298,8 +1305,9 @@ const MobileVerificationPage: React.FC = () => {
                 {t('mobile.front.takePhoto')}
               </PrimaryBtn>
             ) : (
-              <PrimaryBtn onClick={uploadFront} disabled={isProcessing}>
-                {isProcessing ? t('common.processingEllipsis') : t('mobile.front.scan')}
+              // Upload starts on capture; this only shows while it runs or to retry a failed request
+              <PrimaryBtn onClick={() => uploadFront(frontFile)} disabled={isProcessing}>
+                {isProcessing ? t('common.processingEllipsis') : t('common.tryAgain')}
               </PrimaryBtn>
             )}
 
@@ -1347,8 +1355,9 @@ const MobileVerificationPage: React.FC = () => {
                 {t('mobile.back.takePhoto')}
               </PrimaryBtn>
             ) : (
-              <PrimaryBtn onClick={uploadBack} disabled={isProcessing}>
-                {isProcessing ? t('common.processingEllipsis') : t('mobile.back.scan')}
+              // Upload starts on capture; this only shows while it runs or to retry a failed request
+              <PrimaryBtn onClick={() => uploadBack(backFile)} disabled={isProcessing}>
+                {isProcessing ? t('common.processingEllipsis') : t('common.tryAgain')}
               </PrimaryBtn>
             )}
 

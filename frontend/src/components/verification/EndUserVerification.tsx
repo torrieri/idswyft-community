@@ -224,15 +224,16 @@ const EndUserVerification: React.FC<VerificationProps> = ({
     if (frontPreviewUrl) URL.revokeObjectURL(frontPreviewUrl);
     setFrontFile(file);
     setFrontPreviewUrl(URL.createObjectURL(file));
+    uploadFrontDocument(file);
   };
 
-  const uploadFrontDocument = async () => {
-    if (!frontFile || !verificationId) return;
+  const uploadFrontDocument = async (file: File) => {
+    if (!verificationId || isLoading) return;
     setIsLoading(true);
     try {
       const formData = new FormData();
       formData.append('document_type', documentType);
-      formData.append('document', frontFile);
+      formData.append('document', file);
 
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/front-document`, {
         method: 'POST',
@@ -323,14 +324,15 @@ const EndUserVerification: React.FC<VerificationProps> = ({
     if (backPreviewUrl) URL.revokeObjectURL(backPreviewUrl);
     setBackFile(file);
     setBackPreviewUrl(URL.createObjectURL(file));
+    uploadBackDocument(file);
   };
 
-  const uploadBackDocument = async () => {
-    if (!backFile || !verificationId) return;
+  const uploadBackDocument = async (file: File) => {
+    if (!verificationId || isLoading) return;
     setIsLoading(true);
     try {
       const formData = new FormData();
-      formData.append('document', backFile);
+      formData.append('document', file);
       formData.append('document_type', documentType);
 
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/back-document`, {
@@ -644,7 +646,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
     label: string,
   ) => (
     <div className="file-upload-zone">
-      <input type="file" accept="image/*" onChange={onChange} className="hidden" id={id} />
+      <input type="file" accept="image/*" onChange={onChange} disabled={isLoading} className="hidden" id={id} />
       <label htmlFor={id} className="cursor-pointer block">
         {previewUrl ? (
           <img src={previewUrl} alt={t('desktop.upload.previewAlt')} className="max-h-40 mx-auto" style={{ border: '1px solid var(--rule)' }} />
@@ -733,7 +735,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
 
             {frontFile && (
               <button
-                onClick={uploadFrontDocument}
+                onClick={() => uploadFrontDocument(frontFile)}
                 disabled={isLoading}
                 className="btn-accent w-full disabled:opacity-50"
                 style={{ padding: '14px 24px', justifyContent: 'center' }}
@@ -743,7 +745,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
                     <div className="loading-spinner" style={{ width: 16, height: 16 }} />
                     {t('common.uploading')}
                   </span>
-                ) : t('common.continue')}
+                ) : t('common.tryAgain')}
               </button>
             )}
           </div>
@@ -775,7 +777,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
 
             {backFile && (
               <button
-                onClick={uploadBackDocument}
+                onClick={() => uploadBackDocument(backFile)}
                 disabled={isLoading}
                 className="btn-accent w-full disabled:opacity-50"
                 style={{ padding: '14px 24px', justifyContent: 'center' }}
@@ -785,7 +787,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
                     <div className="loading-spinner" style={{ width: 16, height: 16 }} />
                     {t('common.uploading')}
                   </span>
-                ) : t('common.continue')}
+                ) : t('common.tryAgain')}
               </button>
             )}
           </div>

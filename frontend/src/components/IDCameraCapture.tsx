@@ -2,6 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { computeLaplacianVariance } from '../utils/camera/computeLaplacianVariance';
 import { idCameraCss } from '../utils/camera/cameraAnimations';
 import { useCameraStream } from '../utils/camera/useCameraStream';
+import {
+  ID_ASPECT_RATIO,
+  ID_CAMERA_VIDEO_CONSTRAINTS,
+  computeIdCropRect,
+  hasEnoughResolutionForOcr,
+} from '../utils/camera/idCapture';
 import { useT, type TranslationKey } from '../i18n';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -21,7 +27,6 @@ const ROLLING_WINDOW = 5;
 const AUTO_CAPTURE_HOLD_MS = 1500;   // Must stay sharp for 1.5s before auto-capture
 const WARMUP_DELAY_MS = 3000;        // Ignore auto-capture for first 3s so user can position ID
 const ANALYSIS_INTERVAL_MS = 200;
-const ID_ASPECT_RATIO = 1.586; // Standard credit card / driver's license
 
 const FOCUS_COLORS: Record<FocusLevel, string> = {
   blurry: '#ef4444',
@@ -68,6 +73,18 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
     };
   }, []);
 
+  // Low-res streams produce card crops the engine OCR cannot read; the native
+  // camera app takes a full-resolution still instead.
+  const handleStreamReady = useCallback((video: HTMLVideoElement) => {
+    const dimensionsKnown = video.videoWidth > 0 && video.videoHeight > 0;
+    if (dimensionsKnown && !hasEnoughResolutionForOcr(video.videoWidth, video.videoHeight)) {
+      stopStream();
+      onFallback();
+      return;
+    }
+    setState('streaming');
+  }, [stopStream, onFallback]);
+
   // ── Start camera ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -78,11 +95,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
     let cancelled = false;
 
     navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-      },
+      video: ID_CAMERA_VIDEO_CONSTRAINTS,
     }).then(stream => {
       if (cancelled || !mountedRef.current) {
         stream.getTracks().forEach(t => t.stop());
@@ -93,10 +106,10 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
       if (!video) return;
       video.srcObject = stream;
       video.play().then(() => {
-        if (mountedRef.current) setState('streaming');
+        if (mountedRef.current) handleStreamReady(video);
       }).catch(() => {
         // iOS sometimes rejects .play() — retry with user gesture
-        if (mountedRef.current) setState('streaming');
+        if (mountedRef.current) handleStreamReady(video);
       });
     }).catch(err => {
       if (cancelled || !mountedRef.current) return;
@@ -211,10 +224,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
     ctx.drawImage(video, 0, 0, vw, vh);
 
     // Crop to the ID overlay region (center 85% width, matching aspect ratio)
-    const cropW = Math.floor(vw * 0.85);
-    const cropH = Math.floor(cropW / ID_ASPECT_RATIO);
-    const cropX = Math.floor((vw - cropW) / 2);
-    const cropY = Math.floor((vh - cropH) / 2);
+    const { x: cropX, y: cropY, width: cropW, height: cropH } = computeIdCropRect(vw, vh);
 
     // Create a crop canvas
     const cropCanvas = document.createElement('canvas');
@@ -291,18 +301,14 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
 
     // Re-start camera
     navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-      },
+      video: ID_CAMERA_VIDEO_CONSTRAINTS,
     }).then(stream => {
       if (!mountedRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
       streamRef.current = stream;
       const video = videoRef.current;
       if (!video) return;
       video.srcObject = stream;
-      video.play().then(() => { if (mountedRef.current) setState('streaming'); });
+      video.play().then(() => { if (mountedRef.current) handleStreamReady(video); });
     }).catch(() => {
       if (mountedRef.current) setError(t('idcam.error.restartFailed'));
     });
