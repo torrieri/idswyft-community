@@ -74,6 +74,7 @@ import { decryptSMSConfig } from '@/services/smsService.js';
 import sharp from 'sharp';
 import engineClient from '@/services/engineClient.js';
 import { loadActiveRulesForDeveloper, evaluateRules } from '@/services/complianceEngine.js';
+import { resetVerificationForRestart } from '@/services/verificationRestart.js';
 import type { ComplianceContext } from '@/services/complianceEngine.js';
 import { generateVoiceChallenge, verifyChallengeTranscription } from '@/verification/voice/challengeGenerator.js';
 import { computeVoiceMatch } from '@/verification/voice/voiceMatchService.js';
@@ -2452,26 +2453,9 @@ router.post('/:verification_id/restart',
     }
 
     // Reset verification_requests row with optimistic lock on retry_count
-    const { data: updated } = await supabase.from('verification_requests').update({
-      status: 'pending',
-      face_match_score: null,
-      liveness_score: null,
-      cross_validation_score: null,
-      failure_reason: null,
-      processing_completed_at: null,
-      document_id: null,
-      selfie_id: null,
-      retry_count: currentRetryCount + 1,
-      duplicate_flags: null,
-      voice_match_score: null,
-      voice_challenge: null,
-      voice_challenge_created_at: null,
-      completed_at: null,
-    }).eq('id', verification_id)
-      .eq('retry_count', currentRetryCount)
-      .select('id');
+    const resetOutcome = await resetVerificationForRestart(verification_id, currentRetryCount);
 
-    if (!updated?.length) {
+    if (resetOutcome === 'conflict') {
       return res.status(409).json({
         success: false,
         message: 'Verification was modified concurrently. Please try again.',
