@@ -17,7 +17,7 @@ spec:
         - name: ghcr-pull-secret
       containers:
         - name: frontend
-          image: ghcr.io/torrieri/idswyft-frontend:latest
+          image: ghcr.io/torrieri/idswyft-frontend:1.12.20
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
