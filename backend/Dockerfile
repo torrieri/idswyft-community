@@ -41,6 +41,9 @@ RUN cd backend && npx tsc && npx tsc-alias
 
 # Strip devDependencies — only production deps go to runtime stage
 RUN npm prune --omit=dev
+# Workspace-local deps (version conflicts npm could not hoist, e.g. dotenv) live in
+# backend/node_modules; make sure the folder exists so the runtime COPY never fails.
+RUN mkdir -p backend/node_modules
 
 # ── Stage 2: Runtime ────────────────────────────────
 FROM node:20-slim
@@ -57,6 +60,7 @@ RUN groupadd -r nodeuser && useradd -r -g nodeuser -s /bin/false nodeuser
 # Copy compiled output preserving workspace structure for @idswyft/shared resolution
 # node_modules at /app/ contains hoisted deps + workspace symlink to /app/shared/
 COPY --from=build /app/node_modules /app/node_modules
+COPY --from=build /app/backend/node_modules ./node_modules
 COPY --from=build /app/backend/dist ./dist
 COPY --from=build /app/shared/dist /app/shared/dist
 COPY --from=build /app/shared/package.json /app/shared/package.json

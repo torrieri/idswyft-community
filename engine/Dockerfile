@@ -59,6 +59,9 @@ RUN cd engine && npx tsc && npx tsc-alias
 
 # Strip devDependencies — only production deps go to runtime stage
 RUN npm prune --omit=dev
+# Workspace-local deps (version conflicts npm could not hoist, e.g. dotenv) live in
+# engine/node_modules; make sure the folder exists so the runtime COPY never fails.
+RUN mkdir -p engine/node_modules
 
 # ── Stage 2: Runtime ────────────────────────────────
 FROM node:20-slim
@@ -86,6 +89,7 @@ RUN groupadd -r nodeuser && useradd -r -g nodeuser -m -s /bin/false nodeuser \
 
 # Copy compiled output preserving workspace structure for @idswyft/shared resolution
 COPY --from=build /app/node_modules /app/node_modules
+COPY --from=build /app/engine/node_modules ./node_modules
 COPY --from=build /app/engine/dist ./dist
 COPY --from=build /app/engine/models ./models
 COPY --from=build /app/shared/dist /app/shared/dist
