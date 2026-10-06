@@ -29,7 +29,7 @@ spec:
               mountPath: /migrations
       containers:
         - name: api
-          image: ghcr.io/torrieri/idswyft-api:1.12.21
+          image: ghcr.io/torrieri/idswyft-api@sha256:30de7076ccee11df5f201c11165cab1132535384766912e14576e03693fdb26c
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3001

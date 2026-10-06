@@ -17,7 +17,7 @@ spec:
         - name: ghcr-pull-secret
       containers:
         - name: engine
-          image: ghcr.io/torrieri/idswyft-engine:1.12.21
+          image: ghcr.io/torrieri/idswyft-engine@sha256:2ee871421634a3b52a4c4a4c3237fd8617d1f99e604cea47f1e6a6b1dde6557e
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3002
