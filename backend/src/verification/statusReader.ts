@@ -61,6 +61,10 @@ export const STEP_MAPS: Record<string, Record<string, number>> = {
   },
 };
 
+function requiresManualReview(state: Readonly<SessionState>): boolean {
+  return state.force_manual_review === true || !!state.rejection_reason;
+}
+
 /** Map 10-state VerificationStatus to backward-compatible response format */
 export function mapStatusForResponse(
   state: Readonly<SessionState>,
@@ -103,6 +107,12 @@ export function mapStatusForResponse(
       const needsReview = (state.cross_validation ? state.cross_validation.verdict === 'REVIEW' : false)
         || !!state.face_match?.skipped_reason;
       finalResult = needsReview ? 'manual_review' : 'verified';
+    }
+    // Same rule as the DB status written by the step handlers: a session flagged for
+    // manual review, or one that soft-failed a gate, must never be reported as verified
+    // (responses, Realtime broadcasts, webhooks and auto-vault all read this value).
+    if (finalResult === 'verified' && requiresManualReview(state)) {
+      finalResult = 'manual_review';
     }
   } else if (state.current_step === VerificationStatus.HARD_REJECTED) {
     finalResult = 'failed';
