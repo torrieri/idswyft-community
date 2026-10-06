@@ -5,6 +5,19 @@ All notable changes to the Idswyft Main API are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.24] - 2026-10-06
+
+### Fixed
+- **Verification restart** ("Try again" after a failed verification) never worked:
+  the reset wrote `verification_requests.completed_at`, a column that does not
+  exist, and the database error was reported as a 409 conflict. Database errors
+  now surface as real errors.
+- **Engine PDF417 decoding**: in the production image Node did not expose
+  `@zxing/library`'s named exports, so every back-of-ID barcode scan failed and
+  fell back to OCR-based detection. The module is now resolved correctly.
+- **Mobile result screen**: manual review is shown in the neutral accent color with
+  a clock icon instead of the failure red, and restart errors are displayed.
+
 ## [1.12.23] - 2026-10-06
 
 ### Changed
