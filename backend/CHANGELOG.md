@@ -5,6 +5,13 @@ All notable changes to the Idswyft Main API are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.23] - 2026-10-06
+
+### Changed
+- **Capture retry** (`frontend`): when a document upload fails, the photo is
+  discarded and the user is taken back to the capture button instead of a
+  "Try again" that re-sent the same image.
+
 ## [1.12.22] - 2026-10-06
 
 ### Fixed
