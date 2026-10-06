@@ -1736,14 +1736,21 @@ const MobileVerificationPage: React.FC = () => {
               // Failed or manual review
               return (
                 <>
+                  {/* Manual review is a pending state, not a failure: neutral accent + clock */}
                   <div style={{
                     width: 112, height: 112,
-                    border: `1px solid ${isFailed ? 'var(--flag)' : 'var(--flag)'}`,
-                    background: isFailed ? 'var(--flag-soft)' : 'var(--flag-soft)',
+                    border: `1px solid ${isFailed ? 'var(--flag)' : 'var(--accent)'}`,
+                    background: isFailed ? 'var(--flag-soft)' : 'var(--accent-soft)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 44, color: 'var(--flag)', marginBottom: 20,
+                    fontSize: 44, color: isFailed ? 'var(--flag)' : 'var(--accent)', marginBottom: 20,
                   }}>
-                    {isFailed ? '✕' : '?'}
+                    {isFailed ? '✕' : (
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 7v5l3 2" />
+                      </svg>
+                    )}
                   </div>
 
                   <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.025em', marginBottom: 8 }}>
@@ -1765,6 +1772,11 @@ const MobileVerificationPage: React.FC = () => {
                       <PrimaryBtn onClick={handleRetry} disabled={retryProcessing}>
                         {retryProcessing ? t('common.restartingEllipsis') : t('common.tryAgain')}
                       </PrimaryBtn>
+                      {stepError && (
+                        <p role="alert" style={{ marginTop: 10, fontSize: 12, color: 'var(--flag)', fontFamily: 'var(--mono)', textAlign: 'center' }}>
+                          {stepError}
+                        </p>
+                      )}
                     </div>
                   )}
                   {isFailed && finalResult.retry_available === false && (
