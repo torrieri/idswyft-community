@@ -228,6 +228,17 @@ const EndUserVerification: React.FC<VerificationProps> = ({
     uploadFrontDocument(file);
   };
 
+  // A failed upload means the file did not work: ask for a new one instead of re-sending it
+  const discardFrontFile = () => {
+    setFrontFile(null);
+    setFrontPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+  };
+
+  const discardBackFile = () => {
+    setBackFile(null);
+    setBackPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+  };
+
   const uploadFrontDocument = async (file: File) => {
     if (!verificationId || isLoading) return;
     setIsLoading(true);
@@ -249,8 +260,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
       const outcome = getFrontUploadOutcome(data);
       if (outcome.kind === 'retake') {
         toast.error(t('mobile.error.retakeId', { retries: outcome.retriesLeft }));
-        setFrontFile(null);
-        setFrontPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+        discardFrontFile();
         return;
       }
       if (outcome.kind === 'final') {
@@ -275,6 +285,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
       }
     } catch (err: any) {
       toast.error(err.message || t('desktop.error.uploadFailed'));
+      discardFrontFile();
     } finally {
       if (mountedRef.current) setIsLoading(false);
     }
@@ -361,6 +372,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
       pollCrossValidation();
     } catch (err: any) {
       toast.error(err.message || t('desktop.error.uploadBackFailed'));
+      discardBackFile();
     } finally {
       if (mountedRef.current) setIsLoading(false);
     }
@@ -747,8 +759,8 @@ const EndUserVerification: React.FC<VerificationProps> = ({
 
             {frontFile && (
               <button
-                onClick={() => uploadFrontDocument(frontFile)}
-                disabled={isLoading}
+                onClick={() => {}}
+                disabled
                 className="btn-accent w-full disabled:opacity-50"
                 style={{ padding: '14px 24px', justifyContent: 'center' }}
               >
@@ -757,7 +769,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
                     <div className="loading-spinner" style={{ width: 16, height: 16 }} />
                     {t('common.uploading')}
                   </span>
-                ) : t('common.tryAgain')}
+                ) : t('common.uploading')}
               </button>
             )}
           </div>
@@ -789,8 +801,8 @@ const EndUserVerification: React.FC<VerificationProps> = ({
 
             {backFile && (
               <button
-                onClick={() => uploadBackDocument(backFile)}
-                disabled={isLoading}
+                onClick={() => {}}
+                disabled
                 className="btn-accent w-full disabled:opacity-50"
                 style={{ padding: '14px 24px', justifyContent: 'center' }}
               >
@@ -799,7 +811,7 @@ const EndUserVerification: React.FC<VerificationProps> = ({
                     <div className="loading-spinner" style={{ width: 16, height: 16 }} />
                     {t('common.uploading')}
                   </span>
-                ) : t('common.tryAgain')}
+                ) : t('common.uploading')}
               </button>
             )}
           </div>

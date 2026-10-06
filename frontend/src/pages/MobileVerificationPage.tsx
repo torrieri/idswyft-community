@@ -628,6 +628,19 @@ const MobileVerificationPage: React.FC = () => {
     setTimeout(() => document.getElementById('mv-selfie-upload')?.click(), 100);
   }, []);
 
+  // A failed upload means the photo did not work: drop it so the user takes a new one
+  // instead of re-sending the same image. Updater form because the upload runs in the
+  // same tick that set the preview, so the closure's preview URL is stale.
+  const discardFrontCapture = () => {
+    setFrontFile(null);
+    setFrontPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+  };
+
+  const discardBackCapture = () => {
+    setBackFile(null);
+    setBackPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+  };
+
   const uploadFront = async (file: File) => {
     if (!verificationId || !token) return;
     setIsProcessing(true);
@@ -646,10 +659,7 @@ const MobileVerificationPage: React.FC = () => {
       const outcome = getFrontUploadOutcome(data);
       if (outcome.kind === 'retake') {
         setStepError(t('mobile.error.retakeId', { retries: outcome.retriesLeft }));
-        setFrontFile(null);
-        // Updater form: uploadFront runs in the same tick that set the new preview,
-        // so the closure's frontPreviewUrl is stale.
-        setFrontPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+        discardFrontCapture();
         return;
       }
       if (outcome.kind === 'final') {
@@ -676,7 +686,7 @@ const MobileVerificationPage: React.FC = () => {
       setScreenIdx(SCREEN_IDX.back);
       pollFrontOCR(0);
     } catch (err: any) {
-      if (mountedRef.current) setStepError(err.message);
+      if (mountedRef.current) { setStepError(err.message); discardFrontCapture(); }
     } finally {
       if (mountedRef.current) setIsProcessing(false);
     }
@@ -758,7 +768,7 @@ const MobileVerificationPage: React.FC = () => {
       setScreenIdx(SCREEN_IDX.checking); // Checking screen
       pollCrossValidation(0);
     } catch (err: any) {
-      if (mountedRef.current) setStepError(err.message);
+      if (mountedRef.current) { setStepError(err.message); discardBackCapture(); }
     } finally {
       if (mountedRef.current) setIsProcessing(false);
     }
@@ -1310,9 +1320,10 @@ const MobileVerificationPage: React.FC = () => {
                 {t('mobile.front.takePhoto')}
               </PrimaryBtn>
             ) : (
-              // Upload starts on capture; this only shows while it runs or to retry a failed request
-              <PrimaryBtn onClick={() => uploadFront(frontFile)} disabled={isProcessing}>
-                {isProcessing ? t('common.processingEllipsis') : t('common.tryAgain')}
+              // Upload starts on capture and a failed upload discards the photo, so this
+              // only shows while the upload runs
+              <PrimaryBtn onClick={() => {}} disabled>
+                {t('common.processingEllipsis')}
               </PrimaryBtn>
             )}
 
@@ -1360,9 +1371,10 @@ const MobileVerificationPage: React.FC = () => {
                 {t('mobile.back.takePhoto')}
               </PrimaryBtn>
             ) : (
-              // Upload starts on capture; this only shows while it runs or to retry a failed request
-              <PrimaryBtn onClick={() => uploadBack(backFile)} disabled={isProcessing}>
-                {isProcessing ? t('common.processingEllipsis') : t('common.tryAgain')}
+              // Upload starts on capture and a failed upload discards the photo, so this
+              // only shows while the upload runs
+              <PrimaryBtn onClick={() => {}} disabled>
+                {t('common.processingEllipsis')}
               </PrimaryBtn>
             )}
 
