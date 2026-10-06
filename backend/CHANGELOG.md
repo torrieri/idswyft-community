@@ -5,6 +5,36 @@ All notable changes to the Idswyft Main API are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.21] - 2026-10-06
+
+Make ID capture less painful: fewer clicks, more readable photos, and a way to
+let a reviewer decide instead of rejecting users whose document cannot be read.
+
+### Added
+- **Unreadable-document policy**: new `unreadable_document_action`
+  (`reject` | `manual_review`) on `POST /api/v2/verify/initialize`, with portal
+  defaults via `GET/PUT /api/developer/settings/verification-policy` (migration
+  `20261006_add_gate_failure_policy_to_developers`). With `manual_review`, a front
+  document that still cannot be read after the allowed retakes lets the user
+  continue and the verification ends in `manual_review`. Defaults keep the
+  previous behaviour (`reject`, 0 retakes).
+- **Engine**: logs the real dimensions of every document image and runs OCR on a
+  deterministic Lanczos upscale of small captures (face and tamper analysis keep
+  the original pixels).
+
+### Changed
+- **One-step capture** (`frontend`): upload and scan start as soon as the photo is
+  confirmed; the extra Scan/Continue click is gone. The guided ID camera requests
+  4K and falls back to the native camera when the stream is too low-res.
+- Capture flows show "N attempts left" on retryable failures and show the result
+  (instead of a retake that ended in a 409) after a hard rejection.
+
+### Fixed
+- `max_gate_retries` was never persisted, so in-session retakes never happened.
+  Age-only verifications now honour it too.
+- A verification stored as `manual_review` could be reported as `verified` in step
+  responses, Realtime broadcasts, webhooks and auto-vault.
+
 ## [1.12.20] - 2026-10-06
 
 ### Fixed
