@@ -36,7 +36,7 @@
     "react-hook-form": "^7.47.0",
     "react-hot-toast": "^2.4.1",
     "react-markdown": "^10.1.0",
-    "react-qr-code": "^2.0.18",
+    "react-qr-code": "^2.2.0",
     "react-router-dom": "^7.13.2",
     "recharts": "^2.8.0",
     "remark-gfm": "^4.0.1",
