@@ -61,10 +61,11 @@ export class PgQueryBuilder {
   // ─── Operations ────────────────────────────────────────────
 
   select(columns?: string, options?: { count?: string; head?: boolean }): this {
-    // In Supabase's API, .select() after .insert()/.update()/.upsert() means
+    // In Supabase's API, .select() after .insert()/.update()/.upsert()/.delete() means
     // "return these columns from the mutation" — it does NOT change to a SELECT.
     // Our mutations already use RETURNING *, so this is a no-op for mutations.
-    if (this.operation === 'insert' || this.operation === 'update' || this.operation === 'upsert') {
+    // (delete was missing here: .delete().select() silently ran a SELECT and deleted nothing.)
+    if (this.operation === 'insert' || this.operation === 'update' || this.operation === 'upsert' || this.operation === 'delete') {
       if (options) this.selectOptions = options;
       return this;
     }
