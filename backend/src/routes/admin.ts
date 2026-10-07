@@ -17,6 +17,7 @@ import {
   getRiskDistribution,
   type PeriodFilter,
 } from '@/services/analyticsService.js';
+import { resolveReviewOcrFields } from '@/services/reviewOcrFields.js';
 
 const router = express.Router();
 const verificationService = new VerificationService();
@@ -225,15 +226,17 @@ router.get('/verification/:id',
     const frontDoc = (allDocuments || []).find((d: any) => !d.is_back_of_id);
     const backDoc = (allDocuments || []).find((d: any) => d.is_back_of_id);
 
+    const reviewOcr = resolveReviewOcrFields(frontDoc, backDoc, ctx);
+
     const debug = {
       gates: {
         ocr: {
-          extracted: frontDoc?.ocr_extracted ?? null,
+          extracted: reviewOcr.extracted,
           quality_score: frontDoc?.quality_score ?? null,
           quality_analysis: frontDoc?.quality_analysis ?? null,
-          fields: frontDoc?.ocr_data ?? null,
-          back_fields: backDoc?.ocr_data ?? null,
-          barcode_data: backDoc?.barcode_data ?? null,
+          fields: reviewOcr.fields,
+          back_fields: reviewOcr.back_fields,
+          barcode_data: backDoc?.barcode_data ?? (reviewOcr.barcode_format ? { format: reviewOcr.barcode_format } : null),
         },
         cross_validation: {
           score: verification.cross_validation_score,
