@@ -5,6 +5,16 @@ All notable changes to the Idswyft Main API are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.35] - 2026-10-07
+
+### Security
+- `proxy-addr` 2.0.8 (critical: IP spoofing through IPv4-mapped IPv6
+  addresses in trusted subnets), via Express.
+- `compression` 1.8.2 (high: memory-leak DoS when a response is closed early).
+- `sharp` 0.35.5 in backend, engine and shared (high: bundled librsvg and
+  libheif vulnerabilities).
+- `npm audit --audit-level=high --omit=dev` passes again in every workspace.
+
 ## [1.12.34] - 2026-10-07
 
 Merges upstream team-idswyft/idswyft-community 1.12.20 – 1.12.33 (listed in
