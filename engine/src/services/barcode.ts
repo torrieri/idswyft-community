@@ -5,8 +5,8 @@
  * instead of storage paths (images arrive via HTTP multipart).
  */
 
+import { resolveCjsModule } from '@idswyft/shared';
 import { logger } from '@/utils/logger.js';
-import { resolveCjsModule } from '@/utils/cjsInterop.js';
 import { VERIFICATION_THRESHOLDS } from '@/config/verificationThresholds.js';
 import {
   VerificationFailureType,
