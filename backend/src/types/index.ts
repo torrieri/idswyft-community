@@ -115,7 +115,7 @@ export interface APIKey {
   expires_at?: Date;
   // Service-key fields (cloud-only feature; null on developer ik_* keys)
   is_service?: boolean;
-  service_product?: 'gatepass' | 'idswyft-internal' | null;
+  service_product?: 'gatepass' | 'idswyft-internal' | 'kazivio' | null;
   service_environment?: 'production' | 'staging' | 'development' | null;
   service_label?: string | null;
 }
@@ -271,6 +271,11 @@ export interface AppConfig {
   apiKeySecret: string;
   serviceToken: string;
   encryptionKey: string;
+  // If true, re-minting a session (POST /:id/internal/session) wipes any
+  // in-progress capture instead of just refreshing the token. Default false
+  // (no behavior change); set true for a long-lived/shared capture link so
+  // re-opens start clean and abandoned captures are safe to delete.
+  sessionRemintResetProgress: boolean;
   database: {
     url: string;
   };

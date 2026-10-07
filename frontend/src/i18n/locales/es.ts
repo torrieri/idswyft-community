@@ -27,6 +27,7 @@ export const es: Catalog = {
   'common.done': 'Listo',
   'common.restarting': 'Reiniciando...',
   'common.restartingEllipsis': 'Reiniciando…',
+  'common.returnWithoutRetrying': 'Volver sin reintentar',
   'common.poweredBy': 'Con tecnología de Idswyft',
   'common.closeWindow': 'Ya puedes cerrar esta ventana.',
   'common.redirecting': 'Redirigiendo en 3 segundos...',

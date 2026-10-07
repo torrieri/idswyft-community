@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { API_BASE_URL, parseApiError } from '../../config/api';
+import { API_BASE_URL, parseApiError, readApiError } from '../../config/api';
 import { sanitizeRedirectUrl } from '../../utils/redirect';
 import { ContinueOnPhone } from '../ContinueOnPhone';
 import { LiveCaptureWidget } from './LiveCaptureWidget';
 import { getFrontUploadOutcome } from '../../lib/frontUploadOutcome';
+import { isPossiblyTerminalUploadError } from '../../lib/terminalUploadError';
 import { useT, type TranslationKey } from '../../i18n';
 
 export interface VerificationProps {
@@ -182,12 +183,39 @@ const EndUserVerification: React.FC<VerificationProps> = ({
     return res.json();
   };
 
+  // #53: if a verification has already reached a terminal state (e.g. it was
+  // hard-rejected in a previous step), show the result screen — which offers
+  // "Try Again" (POST /restart) when retries remain — instead of dropping the
+  // applicant onto an upload step or a dead-end error. Returns true when it took
+  // over the flow, so callers can stop their normal path.
+  const showResultIfTerminal = async (id: string, failedOnly = false): Promise<boolean> => {
+    try {
+      const status = await apiGet(`/api/v2/verify/${id}/status`);
+      // On mount we only rescue the FAILED dead-end (#53). Taking over on
+      // verified/manual_review at load would fire onComplete/redirect without
+      // the applicant doing anything — a behavior change for reopened links.
+      const terminal = failedOnly ? ['failed'] : ['failed', 'manual_review', 'verified'];
+      if (mountedRef.current && terminal.includes(status?.final_result)) {
+        showFinalResult(status);
+        return true;
+      }
+    } catch {
+      // Status fetch failed — let the caller fall back to its normal path.
+    }
+    return false;
+  };
+
   // ── Step 1: Initialize ─────────────────────────────────────────────────────
   const startVerification = async () => {
     // When using session token, the verification is already initialized server-side
     if (sessionToken && sessionVerificationId) {
       setVerificationId(sessionVerificationId);
-      setCurrentStep(2);
+      // If this verification already FAILED (e.g. rejected on a previous
+      // attempt), show the result screen with Try Again instead of dropping the
+      // applicant onto an upload step with no way forward (#53). Only failed —
+      // reopening a completed link keeps its existing behavior.
+      if (await showResultIfTerminal(sessionVerificationId, true)) return;
+      if (mountedRef.current) setCurrentStep(2);
       return;
     }
 
@@ -253,8 +281,11 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         body: formData,
       });
       if (!res.ok) {
-        const err = await parseApiError(res);
-        throw new Error(err || t('desktop.error.uploadFailed'));
+        const { message, body } = await readApiError(res);
+        // The verification may already be terminal (rejected in a previous step):
+        // route to the result screen with Try Again instead of a dead-end toast (#53).
+        if (isPossiblyTerminalUploadError(res.status, body) && await showResultIfTerminal(verificationId)) return;
+        throw new Error(message || t('desktop.error.uploadFailed'));
       }
       const data = await res.json();
       const outcome = getFrontUploadOutcome(data);
@@ -264,6 +295,8 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         return;
       }
       if (outcome.kind === 'final') {
+        // /status carries retry_available, which decides whether Try Again is offered
+        if (await showResultIfTerminal(verificationId)) return;
         showFinalResult(data);
         return;
       }
@@ -364,8 +397,11 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         body: formData,
       });
       if (!res.ok) {
-        const err = await parseApiError(res);
-        throw new Error(err || t('desktop.error.uploadBackFailed'));
+        const { message, body } = await readApiError(res);
+        // The verification may already be terminal (rejected in a previous step):
+        // route to the result screen with Try Again instead of a dead-end toast (#53).
+        if (isPossiblyTerminalUploadError(res.status, body) && await showResultIfTerminal(verificationId)) return;
+        throw new Error(message || t('desktop.error.uploadBackFailed'));
       }
       toast.success(t('desktop.toast.backUploaded'));
       setCurrentStep(5);
@@ -567,12 +603,10 @@ const EndUserVerification: React.FC<VerificationProps> = ({
     }
   };
 
-  // ── Shared: display final result ──────────────────────────────────────────
-  const showFinalResult = (data: any) => {
-    if (!mountedRef.current) return;
-    setFinalResult(data);
-    setCurrentStep(7);
-
+  // ── Notify the integrator and leave the flow (onComplete + redirect). Split
+  // out so the "Return" button on a retryable failure can trigger it explicitly
+  // after showFinalResult suppresses it for retry (#53).
+  const finalizeAndExit = (data: any) => {
     if (onComplete) {
       // v2: data.final_result has user-facing status ('verified'|'failed'|'manual_review'),
       // data.status has internal machine state ('COMPLETE'|'HARD_REJECTED'|etc.)
@@ -596,6 +630,21 @@ const EndUserVerification: React.FC<VerificationProps> = ({
         else if (redirectUrl) window.location.href = redirectUrl;
       }, 3000);
     }
+  };
+
+  // ── Shared: display final result ──────────────────────────────────────────
+  const showFinalResult = (data: any) => {
+    if (!mountedRef.current) return;
+    setFinalResult(data);
+    setCurrentStep(7);
+
+    // A failed result that still has retries left is NOT terminal for the
+    // applicant — keep them on the result screen so they can click Try Again (or
+    // Return). Firing onComplete/redirect here would navigate away and defeat the
+    // restart affordance (#53).
+    if (data.final_result === 'failed' && data.retry_available === true) return;
+
+    finalizeAndExit(data);
   };
 
   // ── Retry failed verification ────────────────────────────────────────────
@@ -1102,11 +1151,23 @@ const EndUserVerification: React.FC<VerificationProps> = ({
                 {retryProcessing ? t('common.restarting') : t('common.tryAgain')}
               </button>
             )}
+            {/* Let an applicant who doesn't want to retry exit to the integrator
+                (redirect / onComplete were suppressed to keep them here) (#53). */}
+            {isFailed && finalResult.retry_available === true && (redirectUrl || onRedirect || onComplete) && (
+              <button
+                onClick={() => finalizeAndExit(finalResult)}
+                disabled={retryProcessing}
+                className="btn-outline w-full disabled:opacity-50"
+                style={{ padding: '12px 24px', justifyContent: 'center' }}
+              >
+                {t('common.returnWithoutRetrying')}
+              </button>
+            )}
             {isFailed && finalResult.retry_available === false && (
               <p className="mono" style={{ fontSize: 11, color: 'oklch(0.68 0.17 25)', letterSpacing: '0.04em' }}>{t('common.maxRetries')}</p>
             )}
 
-            {(redirectUrl || onRedirect) && (
+            {(redirectUrl || onRedirect) && !(isFailed && finalResult.retry_available === true) && (
               <p className="mono" style={{ fontSize: 11, color: 'var(--soft)', letterSpacing: '0.04em' }}>{t('common.redirecting')}</p>
             )}
           </div>

@@ -36,6 +36,7 @@ export const en = {
   'common.done': 'Done',
   'common.restarting': 'Restarting...',
   'common.restartingEllipsis': 'Restarting…',
+  'common.returnWithoutRetrying': 'Return without retrying',
   'common.poweredBy': 'Powered by Idswyft',
   'common.closeWindow': 'You can close this window.',
   'common.redirecting': 'Redirecting in 3 seconds...',

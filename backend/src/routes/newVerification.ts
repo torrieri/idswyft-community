@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import multer from 'multer';
 import { body, param } from 'express-validator';
 import crypto from 'crypto';
-import { authenticateAPIKeyOrHandoff, authenticateUser, checkSandboxMode, hashHandoffToken } from '@/middleware/auth.js';
+import { authenticateAPIKeyOrHandoff, authenticateServiceToken, authenticateUser, checkSandboxMode, hashHandoffToken } from '@/middleware/auth.js';
 import { verificationRateLimit } from '@/middleware/rateLimit.js';
 import { idempotencyMiddleware } from '@/middleware/idempotency.js';
 import { catchAsync, ValidationError, FileUploadError } from '@/middleware/errorHandler.js';
@@ -198,7 +198,7 @@ async function hydrateSession(verificationId: string, isSandbox: boolean, develo
   let resolvedDeveloperId = developerId;
   const { data: row, error: rowError } = await supabase
     .from('verification_requests')
-    .select('developer_id, verification_mode, addons')
+    .select('developer_id, verification_mode, addons, issuing_country')
     .eq('id', verificationId)
     .single();
   if (row?.addons) {
@@ -211,6 +211,13 @@ async function hydrateSession(verificationId: string, isSandbox: boolean, develo
   }
   if (!resolvedDeveloperId && row?.developer_id) {
     resolvedDeveloperId = row.developer_id;
+  }
+  // Restore issuing_country from the durable verification_requests row when the
+  // session state doesn't carry it — e.g. after /restart deletes the session
+  // context. Without this, a restarted non-US verification loses its country
+  // and re-fails on the US extractor (community #53).
+  if (!hydration.issuing_country && row?.issuing_country) {
+    hydration.issuing_country = row.issuing_country;
   }
 
   // Look up developer's settings (aml_enabled, voice_auth_enabled)
@@ -266,7 +273,7 @@ async function getDeveloperLLMConfig(developerId: string): Promise<LLMProviderCo
   try {
     const { data } = await supabase
       .from('developers')
-      .select('llm_provider, llm_api_key_encrypted, llm_endpoint_url')
+      .select('llm_provider, llm_api_key_encrypted, llm_endpoint_url, llm_model')
       .eq('id', developerId)
       .single();
 
@@ -277,6 +284,7 @@ async function getDeveloperLLMConfig(developerId: string): Promise<LLMProviderCo
       provider: data.llm_provider as LLMProviderConfig['provider'],
       apiKey,
       endpointUrl: data.llm_endpoint_url || undefined,
+      model: data.llm_model || undefined,
     };
   } catch (err) {
     logger.debug('getDeveloperLLMConfig: failed to load LLM config', {
@@ -956,6 +964,10 @@ router.post('/initialize',
       verification_mode: resolvedMode,
       client_ip: req.ip || req.socket?.remoteAddress || null,
       step_timestamps: { init: new Date().toISOString() },
+      // Persist the country so later steps, status reads, and reverification
+      // (which copies parentVerification.issuing_country) don't inherit an empty
+      // column (community #54).
+      ...(issuing_country && { issuing_country: issuing_country.toUpperCase() }),
       ...((req as any).apiKey?.id && { api_key_id: (req as any).apiKey.id }),
       ...(resolvedAgeThreshold !== null && { age_threshold: resolvedAgeThreshold }),
       ...((resolvedAddons as any).compliance_force_manual_review && {
@@ -1280,8 +1292,17 @@ router.post('/:verification_id/front-document',
       document_id: document.id,
     } as any);
 
-    // Resolve issuing_country: per-request override > session state
-    const resolvedCountry = issuing_country?.toUpperCase() || earlyState?.issuing_country || undefined;
+    // Resolve issuing_country: per-request override > session state (stored at
+    // /initialize) > the verification_requests row. Without the session fallback,
+    // a caller who set the country only at init loses it here and non-MRZ
+    // documents fall through to the US extractor (community #54). The row is the
+    // last resort because /restart deletes the session context (verification_contexts),
+    // so after a retry earlyState is null — without it, a restarted non-US
+    // verification would re-fail identically (community #53).
+    const resolvedCountry = issuing_country?.toUpperCase()
+      || earlyState?.issuing_country
+      || (verification as any).issuing_country
+      || undefined;
 
     // Look up developer's LLM config for enhanced OCR extraction
     const developerId = (req as any).developer.id;
@@ -2342,7 +2363,7 @@ router.post('/:verification_id/voice-capture',
         .update({
           status: finalResult,
           manual_review_reason: manualReviewReason,
-          completed_at: new Date().toISOString(),
+          processing_completed_at: new Date().toISOString(),
         })
         .eq('id', verification_id);
     }
@@ -2499,6 +2520,99 @@ router.post('/:verification_id/restart',
     broadcastStatusChange(
       verification_id, 'AWAITING_FRONT', 1, null, null
     ).catch(() => {});
+  })
+);
+
+// ─── Internal: re-mint a session against an existing verification ────────
+// Mints a fresh session token for an existing, non-terminal verification.
+// Service-token auth only, called by our capture-link resolver, never an
+// integrator or browser. Optional progress wipe via
+// config.sessionRemintResetProgress (see types/index.ts), default off.
+router.post('/:verification_id/internal/session',
+  authenticateServiceToken,
+  [
+    param('verification_id').isUUID().withMessage('Invalid verification ID'),
+  ],
+  validate,
+  catchAsync(async (req: Request, res: Response) => {
+    const { verification_id } = req.params;
+    const resetProgress = config.sessionRemintResetProgress;
+
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const sessionTokenHash = hashHandoffToken(sessionToken);
+    const sessionTokenExpiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // session_api_key_id is left untouched; only the token/expiry rotate.
+    // `.not('status', 'in', ...)` makes the terminal-status check atomic
+    // with the write.
+    const updatePayload: Record<string, unknown> = {
+      session_token_hash: sessionTokenHash,
+      session_token_expires_at: sessionTokenExpiresAt.toISOString(),
+    };
+    if (resetProgress) {
+      Object.assign(updatePayload, {
+        status: 'pending',
+        face_match_score: null,
+        liveness_score: null,
+        cross_validation_score: null,
+        failure_reason: null,
+        processing_completed_at: null,
+        document_id: null,
+        selfie_id: null,
+        duplicate_flags: null,
+        voice_match_score: null,
+        voice_challenge: null,
+        voice_challenge_created_at: null,
+      });
+    }
+
+    const { data: updated, error } = await supabase
+      .from('verification_requests')
+      .update(updatePayload)
+      .eq('id', verification_id)
+      .not('status', 'in', '("verified","failed","manual_review")')
+      .select('id')
+      .single();
+
+    if (error || !updated) {
+      return res.status(404).json({
+        success: false,
+        message: 'Verification not found, or already finished — capture link is no longer valid',
+      });
+    }
+
+    if (resetProgress) {
+      // No resume: wipe in-progress capture so the next open starts clean.
+      // Scoped to this reset only, not a general abandoned-session sweep.
+      await Promise.all([
+        supabase.from('documents').delete().eq('verification_request_id', verification_id),
+        supabase.from('selfies').delete().eq('verification_request_id', verification_id),
+        supabase.from('verification_risk_scores').delete().eq('verification_request_id', verification_id),
+        supabase.from('verification_contexts').delete().eq('verification_id', verification_id),
+        supabase.from('dedup_fingerprints').delete().eq('verification_request_id', verification_id),
+      ]);
+    }
+
+    logVerificationEvent('verification_session_reminted', verification_id, { resetProgress });
+
+    const frontendBase = process.env.FRONTEND_URL
+      || req.headers.origin
+      || req.headers.referer?.replace(/\/[^/]*$/, '')
+      || `${req.protocol}://${req.get('host')}`;
+
+    res.json({
+      success: true,
+      verification_id,
+      session_token: sessionToken,
+      session_token_expires_at: sessionTokenExpiresAt.toISOString(),
+      verification_url: `${frontendBase}/user-verification?session=${sessionToken}`,
+    });
+
+    if (resetProgress) {
+      broadcastStatusChange(
+        verification_id, 'AWAITING_FRONT', 1, null, null
+      ).catch(() => {});
+    }
   })
 );
 

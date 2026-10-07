@@ -22,26 +22,41 @@ export const API_BASE_URL = _getApiBaseUrl();
 export const buildApiUrl = (path: string): URL =>
   new URL(`${API_BASE_URL}${path}`, window.location.origin);
 
-export const parseApiError = async (res: Response): Promise<string> => {
+export interface ApiErrorDetails {
+  message: string;
+  /** Parsed JSON body, or null when the response was not JSON */
+  body: Record<string, unknown> | null;
+}
+
+/** Read an error response once, keeping both a readable message and the parsed JSON body */
+export const readApiError = async (res: Response): Promise<ApiErrorDetails> => {
   const contentType = res.headers.get('content-type') || '';
   const text = await res.text();
 
   if (contentType.includes('application/json')) {
     try {
       const body = JSON.parse(text);
-      return body.message || body.error?.message || String(body.error) || `HTTP ${res.status}`;
+      return {
+        message: body.message || body.error?.message || String(body.error) || `HTTP ${res.status}`,
+        body: body && typeof body === 'object' ? body : null,
+      };
     } catch {
-      return text.trim() || `HTTP ${res.status}`;
+      return { message: text.trim() || `HTTP ${res.status}`, body: null };
     }
   }
 
   const snippet = text.trim().slice(0, 200).replace(/\s+/g, ' ');
   if (snippet.startsWith('<!DOCTYPE') || snippet.startsWith('<html')) {
-    return `Server returned HTML instead of JSON (HTTP ${res.status}). Check the backend console / Network tab.`;
+    return {
+      message: `Server returned HTML instead of JSON (HTTP ${res.status}). Check the backend console / Network tab.`,
+      body: null,
+    };
   }
 
-  return snippet || `HTTP ${res.status}`;
+  return { message: snippet || `HTTP ${res.status}`, body: null };
 };
+
+export const parseApiError = async (res: Response): Promise<string> => (await readApiError(res)).message;
 
 // Determine if we should use sandbox mode
 export const shouldUseSandbox = (_apiKey?: string) => {

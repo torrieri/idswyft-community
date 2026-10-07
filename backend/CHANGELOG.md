@@ -91,6 +91,250 @@ let a reviewer decide instead of rejecting users whose document cannot be read.
   throw `Cannot read properties of null (reading 'length')` for any reviewer whose
   scope contained an erased verification. The list, search and detail view now
   render missing user IDs as "Anonymized".
+## Upstream releases (team-idswyft/idswyft-community 1.12.20 – 1.12.33)
+
+Merged into this fork from the official repository. Version numbers 1.12.20 – 1.12.26
+overlap with this fork's own releases above; the entries below are upstream's.
+
+### [upstream 1.12.33] - 2026-10-05
+
+#### Fixed
+- **Back-of-ID barcode decoding broke all driver's-license cross-validation**
+  (`engine` + `backend`): PDF417 decoding threw
+  `ZXing.PlanarYUVLuminanceSource is not a constructor`, so the back barcode never
+  decoded, the OCR fallback returned a wrong id number with empty name/dob, and
+  cross-validation hard-failed (front vs back 0.000) — surfacing as
+  "identification failed", including on the demo page. `@zxing/library@0.23.0`
+  nests its classes under `.default` under an ESM dynamic import; the loader now
+  resolves whichever namespace exposes the classes. Pinned the engine's
+  `@zxing/library` to 0.21.3 (matching the lockfile) so `npm install` stops
+  drifting from 0.21.3 to 0.23.0 on each rebuild.
+
+### [upstream 1.12.32] - 2026-09-23
+
+#### Changed
+- **Landmarks-only face detection on the head-turn liveness path** (`engine` +
+  `backend` + `shared`, community #51): the head-turn verifier ran the full
+  face-api chain (detect → landmarks → 128-d descriptor → age/gender) for every
+  frame, but only uses confidence, landmarks, and the bounding box. On the WASM
+  backend the full chain degraded after prolonged uptime and returned null for
+  all frames, failing the challenge with `0/N frames have faces` until the engine
+  container was restarted. Added `detectFaceLandmarksFromBuffer`
+  (`detectSingleFace().withFaceLandmarks()` only — two fewer model inferences per
+  frame) and pointed `HeadTurnVerifier` at it; face matching still uses the full
+  `detectFaceFromBuffer`. Also log TF.js tensor memory around the detection loop
+  so the suspected leak is visible without waiting hours for a restart. Reported
+  by `ClausSBG`.
+
+### [upstream 1.12.31] - 2026-09-23
+
+#### Fixed
+- **Rejected hosted-page applicants could not restart** (`backend` + `frontend`,
+  community #53): a verification that hard-rejected mid-flow left the applicant
+  stuck — the "Try Again" control (`POST /:id/restart`) only rendered on the
+  terminal result screen, but the `already rejected` 409 surfaced during a step
+  upload. The hosted desktop (`EndUserVerification`) and phone
+  (`MobileVerificationPage`) flows now detect a terminal state on mount and on an
+  upload rejection and show the result screen with Try Again (plus a "Return
+  without retrying" exit). On the backend, `/restart` deletes the session context
+  (`verification_contexts`), so a restarted verification lost its `issuing_country`
+  and a non-US document would re-fail on the US extractor. Resolve the
+  front-document country from `verification_requests.issuing_country` as a fallback
+  and restore it in `hydrateSession`, so the "set `issuing_country` at
+  `/initialize`" path survives a restart.
+
+### [upstream 1.12.30] - 2026-09-23
+
+Completes community #58 (reported by `ClausSBG`).
+
+#### Fixed
+- **Webhook registration still failed with no secret on self-hosted** (`backend`,
+  community #58, part 1 follow-up): v1.12.29 stripped `secret_token` only when a
+  secret was supplied. With no secret, the key survived as `undefined`, and the
+  community PgClient adapter (which builds its INSERT column list from
+  `Object.keys`) still emitted `column "secret_token" does not exist`. Strip
+  `secret_token` unconditionally on write. Also aligned `backend/src/sql/schema.sql`
+  (legacy `db:setup` path) to `secret_key`, removing the drift from migration 01.
+- **`POST /api/webhooks/:id/test` could never fire** (`backend`, community #58,
+  part 2): the route persisted a `webhook_deliveries` row with a synthetic
+  `verification_id`, but `verification_request_id` is NOT NULL with an FK to
+  `verification_requests`, so every insert failed. Added
+  `WebhookService.sendTestWebhook`, which signs and POSTs the test directly
+  (with the SSRF guard) and reports the result without writing to the database.
+
+### [upstream 1.12.29] - 2026-09-23
+
+Community contribution from `ClausSBG`, reviewed and ported.
+
+#### Fixed
+- **Webhook registration failed on fresh installs** (`backend`, community #58):
+  `WebhookService.createWebhook` and `updateWebhook` wrote to `secret_token`, but
+  the `webhooks` table column is `secret_key` (migration 01). Postgres rejected the
+  insert with `column "secret_token" does not exist`, so `POST /webhooks/register`
+  never stored a webhook. Map `secret_token` onto the `secret_key` column on write
+  (encrypted); the delivery/signing path already reads and decrypts `secret_key`.
+
+### [upstream 1.12.28] - 2026-09-23
+
+Community contributions from `brigitte-certaindata`, reviewed and ported.
+
+#### Fixed
+- **Migration ordering on fresh installs** (`backend`, community #61): `migrate.ts`
+  sorted filenames with a plain string sort, so 8-digit date-prefixed migrations
+  (`20260629_…`) ran before numeric ones (`58_…`) they depend on. Sort by leading
+  digits numerically. Also excludes the migration-58 shadow developer rows
+  (`service+%@idswyft.app`) from the first-run setup guard, which otherwise made a
+  fresh self-host think setup was already done.
+- **`completed_at` write errors** (`backend`, community #62): `verification_requests`
+  has no `completed_at` column (only `processing_completed_at`); the voice-capture
+  completion and restart-reset paths wrote it and threw `42703`. Corrected both.
+
+#### Added
+- **Re-mint a session token on an existing verification** (`backend`, community #59):
+  `POST /:verification_id/internal/session` issues a fresh session token for a
+  non-terminal verification so a long-lived capture link can be reopened without a
+  new `verification_id`. Service-token auth only; terminal-status check is atomic
+  with the write; optional progress wipe gated behind `SESSION_REMINT_RESET_PROGRESS`
+  (default false).
+- **Abandoned-capture image purge** (`backend`, community #60):
+  `DataRetentionService.runAbandonedCaptureCleanup` (hourly) deletes images left by
+  captures whose hosted-page session expired before completing. Scoped to
+  non-terminal, expired-session verifications; completed verifications and the
+  `verification_requests` audit row are untouched.
+
+### [upstream 1.12.27] - 2026-09-11
+
+#### Changed
+- **Reverted the migrate-on-boot experiment** (`backend`): removed the Dockerfile
+  step that bundled `supabase/migrations/` into the image (1.12.25) and the
+  non-fatal entrypoint change (1.12.26). The image and entrypoint are back to
+  their pre-1.12.25 state — the cloud image ships no migrations directory, so the
+  entrypoint skips auto-migrate and the API boots via `SUPABASE_URL` as it always
+  has. Migrations are applied out-of-band as before. Self-hosted docker-compose is
+  unchanged (it still bind-mounts migrations and auto-applies them on boot).
+  Kazivio (1.12.24) and migration 63 are retained.
+
+### [upstream 1.12.26] - 2026-09-11
+
+#### Fixed
+- **Auto-migrate no longer crashes the API** (`backend`): v1.12.25 bundled the
+  migration files, so the entrypoint started running `migrate.js` on boot. On
+  Railway the API service has no `DATABASE_URL` (it connects via `SUPABASE_URL`),
+  so `migrate.js` exited 1 and `set -e` killed the container — the production API
+  crash-looped. The entrypoint now runs the migration inside an `if` that
+  consumes the exit code: it logs a warning and starts the server regardless. A
+  missing `DATABASE_URL` or a failed migration can no longer take the API down.
+  To enable auto-migration, set `DATABASE_URL` on the Railway API service; until
+  then the server boots and migrations are skipped, matching pre-1.12.25 behavior.
+
+### [upstream 1.12.25] - 2026-09-11
+
+#### Fixed
+- **Migrations now auto-apply on Railway deploys** (`backend`): the Docker image
+  did not contain the migration SQL files — the Dockerfile assumed a
+  docker-compose bind mount that Railway does not provide — so the entrypoint's
+  auto-migrate step found no `MIGRATIONS_DIR` and silently skipped. Production
+  drifted three migrations behind (61, 62, 63 unapplied) as a result. The image
+  now bundles `supabase/migrations/` at `/app/backend/migrations`, so the
+  entrypoint runs `migrate.js` on every boot and applies pending migrations
+  (idempotent, tracked in `_migrations`, advisory-locked, `numReplicas: 1`).
+  Self-hosted docker-compose is unaffected — it still overlays the same path
+  read-only. This deploy also clears the 61/62/63 backlog on first boot.
+
+### [upstream 1.12.24] - 2026-09-11
+
+#### Added
+- **`kazivio` as a first-class service product** (`backend`, cloud-only): service
+  keys can now be minted for the Kazivio internal product, with its own telemetry
+  bucket (`api_activity_logs.service_product = 'kazivio'`) instead of riding under
+  `idswyft-internal`. Adds `kazivio` to the product allow-lists in the service-key
+  and platform-webhook routes and the mint CLI, and to the `ApiKey.service_product`
+  type. Migration 63 widens the `api_keys_service_product_valid` CHECK constraint
+  and inserts the `service+kazivio@idswyft.app` shadow developer row. The
+  constraint rejects a `kazivio` key until migration 63 runs on the target
+  environment.
+
+### [upstream 1.12.23] - 2026-09-06
+
+#### Fixed
+- **Verification management page crashed on anonymized records** (`frontend`):
+  the page threw `TypeError: Cannot read properties of null (reading 'length')`
+  to the error boundary whenever a row had a null `user_id`.
+  `verification_requests.user_id` is nulled by GDPR anonymization (and absent on
+  some handoff/reverification rows), but the `Verification` type declared it
+  `string`, so `truncateId(v.user_id)` ran `null.length` and the search filter
+  ran `null.toLowerCase()`. `truncateId` is now null-safe (renders an em-dash
+  placeholder — also covering the nullable `matched_verification_id`), the search
+  filter guards null, and the type is corrected to `string | null`.
+
+### [upstream 1.12.22] - 2026-09-06
+
+#### Fixed
+- **`issuing_country` was accepted but never persisted** (`backend`):
+  `POST /verify/initialize` validated `issuing_country` and stored it only in
+  session state — the `verification_requests.issuing_country` column stayed
+  empty. The front-document handler then read the country from the request body
+  alone (despite a comment promising a session fallback), so a caller who set
+  the country once at init lost it on upload. Non-MRZ documents (Austrian
+  licences, French *permis*, etc.) fell through to the US extractor and returned
+  empty fields even though OCR read the text correctly. Now `/initialize`
+  persists the column (so status reads and reverification, which copies
+  `parentVerification.issuing_country`, stop inheriting an empty country) and the
+  front-document handler falls back to the session country when the request
+  omits it (community #54).
+
+### [upstream 1.12.21] - 2026-09-06
+
+Verification and OCR pipeline fixes ported from community PR #55 (lucasbenica),
+reviewed for the deterministic-decision boundary. The deepfake model swap from
+that PR was held back (sidecar/model mismatch); this release is the boundary-safe
+subset.
+
+#### Fixed
+- **jsonb array writes were silently dropped** (`backend`): node-pg serialized a
+  JS array into a Postgres array literal, which json/jsonb columns reject with
+  `invalid input syntax for type json`. The pg adapter now looks up json/jsonb
+  columns from the catalog (cached per table) and stringifies array values only
+  for them; `text[]` columns keep the array literal. Restores lost
+  `duplicate_flags` writes and lets `addons` persist.
+- **Missing `verification_requests.addons` column** (migration 61): the pipeline
+  has always written and read `addons`, but no migration created it, so status
+  reads logged `column "addons" does not exist` and reported `verification_mode`
+  "full" for every verification (community #52).
+- **Broken local-storage document display** (`backend`): `/api/files/*` had no
+  matching route and the stored path repeated its `uploads/` prefix. The URL is
+  corrected, the endpoint now also accepts an admin/reviewer session cookie (the
+  admin panel renders documents in `<img>`/`<video>` tags that cannot send an
+  API key), and the nginx `/api/` prefix wins over the static-asset regex.
+
+#### Added
+- **Developer LLM model configuration** (migration 62, `shared`, `backend`,
+  `frontend`): developers can pin the model sent to the LLM OCR provider. Custom
+  OpenAI-compatible endpoints (Gemini, OpenRouter, vLLM) require it — without a
+  model the gateway answers `400` and the OCR fallback silently never ran. LLM
+  use stays extraction-only; no decision logic (deterministic invariant intact).
+- **LLM provider smoke-test script** (`scripts/test-llm-provider.mjs`) with a
+  synthetic sample document, for verifying a key/endpoint/model reads a document.
+
+### [upstream 1.12.20] - 2026-09-06
+
+Reliability and disclosure fixes reported by the community.
+
+#### Fixed
+- **OCR no longer stays dead after a transient init failure** (`engine`, `backend`):
+  the PaddleOCR ONNX models download on the first extraction, so a brief network
+  blip at that moment threw from `svc.initialize()`. `ensureInitialized()` cached
+  the rejected `initPromise` and the `if (!this.initPromise)` guard then blocked
+  every retry, leaving OCR dead for the life of the container while `/health` still
+  reported `ok`. The `catch` now clears `initPromise` and logs the error, so the
+  next request re-attempts the download — mirroring `faceRecognition.ts`. Applied to
+  both the engine provider and the backend local-fallback copy, with a regression
+  test (community #57).
+
+#### Added
+- **Security policy** (`SECURITY.md`): documents private vulnerability reporting
+  (GitHub private reporting, now enabled on the community mirror, plus
+  `team@idswyft.app`), reporting guidance, and response expectations (community #56).
 
 ## [1.12.19] - 2026-07-26
 

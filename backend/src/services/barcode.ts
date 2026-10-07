@@ -29,7 +29,12 @@ try {
 }
 
 try {
-  ZXing = await import('@zxing/library');
+  const mod: any = await import('@zxing/library');
+  // @zxing/library@0.23.0 nests its classes under `.default` under an ESM dynamic
+  // import, so `new ZXing.PlanarYUVLuminanceSource(...)` threw "not a constructor"
+  // and PDF417 decoding failed, breaking back-of-ID cross-validation. Resolve the
+  // namespace that actually exposes the classes. (Mirror of the engine fix.)
+  ZXing = mod?.PlanarYUVLuminanceSource ? mod : (mod?.default ?? mod);
   console.log('📄 ZXing barcode library loaded for PDF417 detection');
 } catch (error) {
   logger.warn('ZXing library not available, falling back to OCR-based detection');

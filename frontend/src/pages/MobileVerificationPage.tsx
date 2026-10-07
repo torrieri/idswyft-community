@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { API_BASE_URL, parseApiError } from '../config/api';
+import { API_BASE_URL, parseApiError, readApiError } from '../config/api';
+import { isPossiblyTerminalUploadError } from '../lib/terminalUploadError';
 import { sanitizeRedirectUrl, buildRedirectUrl } from '../utils/redirect';
 import IDCameraCapture from '../components/IDCameraCapture';
 import SelfieCameraCapture from '../components/SelfieCameraCapture';
@@ -503,6 +504,10 @@ const MobileVerificationPage: React.FC = () => {
           // Reuse existing verification — already linked in the handoff row
           setVerificationId(data.verification_id);
           setLoading(false);
+          // If it already FAILED (e.g. rejected on a previous attempt), jump
+          // straight to the result screen with Try Again instead of the upload
+          // flow (#53). Only failed — reopening a completed link is unchanged.
+          showResultIfTerminal(data.verification_id, true);
         } else {
           // Legacy path: no pre-existing verification — create one
           initializeVerification(data.user_id, data.source);
@@ -527,6 +532,27 @@ const MobileVerificationPage: React.FC = () => {
     if (!res.ok) throw new Error(await parseApiError(res));
     return res.json();
   }, [token]);
+
+  // #53: if a verification is already terminal (e.g. rejected on a previous
+  // attempt), show the result screen — which offers "Try Again" (POST /restart)
+  // when retries remain — instead of dropping the applicant onto an upload step
+  // or a dead-end error. Returns true when it took over the flow.
+  const showResultIfTerminal = async (id: string, failedOnly = false): Promise<boolean> => {
+    try {
+      const status = await apiGet(`/api/v2/verify/${id}/status`);
+      // On mount we only rescue the FAILED dead-end (#53). Taking over on
+      // verified/manual_review at load would fire the redirect / desktop notify
+      // without the applicant doing anything — a behavior change for reopened links.
+      const terminal = failedOnly ? ['failed'] : ['failed', 'manual_review', 'verified'];
+      if (mountedRef.current && terminal.includes(status?.final_result)) {
+        showFinalResult(status);
+        return true;
+      }
+    } catch {
+      // Status fetch failed — let the caller fall back to its normal path.
+    }
+    return false;
+  };
 
   // ── Step 0: Initialize verification session ────────────────────────────
   const initializeVerification = async (uid: string, source?: string) => {
@@ -652,7 +678,13 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/front-document`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
-      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || t('mobile.error.uploadFailed')); }
+      if (!res.ok) {
+        const { message, body } = await readApiError(res);
+        // Already terminal (e.g. rejected in a previous step): show the result
+        // screen with Try Again instead of a dead-end error (#53).
+        if (isPossiblyTerminalUploadError(res.status, body) && await showResultIfTerminal(verificationId)) return;
+        throw new Error(message || t('mobile.error.uploadFailed'));
+      }
       if (!mountedRef.current) return;
       const data = await res.json().catch(() => null);
 
@@ -663,6 +695,8 @@ const MobileVerificationPage: React.FC = () => {
         return;
       }
       if (outcome.kind === 'final') {
+        // /status carries retry_available, which decides whether Try Again is offered
+        if (await showResultIfTerminal(verificationId)) return;
         showFinalResult(data);
         return;
       }
@@ -752,7 +786,11 @@ const MobileVerificationPage: React.FC = () => {
       const res = await fetch(`${API_BASE_URL}/api/v2/verify/${verificationId}/back-document`, {
         method: 'POST', headers: { 'X-Handoff-Token': token }, body: fd,
       });
-      if (!res.ok) { const e = await parseApiError(res); throw new Error(e || t('mobile.error.uploadFailed')); }
+      if (!res.ok) {
+        const { message, body } = await readApiError(res);
+        if (isPossiblyTerminalUploadError(res.status, body) && await showResultIfTerminal(verificationId)) return;
+        throw new Error(message || t('mobile.error.uploadFailed'));
+      }
       if (!mountedRef.current) return;
 
       // For document_only, the back-doc response may already include final_result
@@ -1114,6 +1152,19 @@ const MobileVerificationPage: React.FC = () => {
     if (!mountedRef.current) return;
     setFinalResult(data);
     setScreenIdx(SCREEN_IDX.done);
+
+    // A failed result with retries left isn't terminal for the applicant — keep
+    // them on the result screen so they can Try Again (or Return). Don't redirect
+    // or notify the desktop yet; either would end the flow prematurely (#53).
+    if (data.final_result === 'failed' && data.retry_available === true) return;
+
+    await finalizeAndExit(data);
+  };
+
+  // finalizeAndExit: notify the desktop and leave the flow (redirect + handoff
+  // complete). Split out so the "Return" button on a retryable failure can call
+  // it explicitly after showFinalResult suppresses it for retry (#53).
+  const finalizeAndExit = async (data: any) => {
     const status = data.final_result ?? data.status;
 
     // Start redirect timer immediately (don't block on handoff PATCH retries)
@@ -1777,6 +1828,22 @@ const MobileVerificationPage: React.FC = () => {
                           {stepError}
                         </p>
                       )}
+                      {/* Let an applicant who doesn't want to retry exit: notify
+                          the desktop / redirect (suppressed above to keep them here) (#53). */}
+                      <button
+                        onClick={() => finalizeAndExit(finalResult)}
+                        disabled={retryProcessing}
+                        style={{
+                          width: '100%', marginTop: 10, padding: '12px 20px',
+                          border: '1px solid var(--rule)', background: 'transparent',
+                          color: 'var(--mid)', fontFamily: 'var(--mono)', fontSize: 12,
+                          fontWeight: 500, letterSpacing: '0.04em', textTransform: 'uppercase',
+                          cursor: retryProcessing ? 'not-allowed' : 'pointer', flexShrink: 0,
+                          opacity: retryProcessing ? 0.5 : 1,
+                        }}
+                      >
+                        {t('common.returnWithoutRetrying')}
+                      </button>
                     </div>
                   )}
                   {isFailed && finalResult.retry_available === false && (
