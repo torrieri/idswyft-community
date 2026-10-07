@@ -5,6 +5,15 @@ All notable changes to the Idswyft Main API are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.25] - 2026-10-06
+
+### Fixed
+- **Deletes that silently did nothing** (Postgres adapter): `.delete().select()`
+  ran a SELECT instead of a DELETE. Deleting a compliance ruleset reported success
+  but the ruleset stayed listed, and `deleteVaultEntry` (GDPR erasure of identity
+  vault entries) logged the erasure without deleting the entry. Vault erasures
+  requested before this release should be re-run.
+
 ## [1.12.24] - 2026-10-06
 
 ### Fixed
