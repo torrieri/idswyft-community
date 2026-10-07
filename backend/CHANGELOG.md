@@ -5,6 +5,17 @@ All notable changes to the Idswyft Main API are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.26] - 2026-10-06
+
+### Fixed
+- **Reviewer OCR panel** always showed "No OCR data available" for v2 session
+  verifications, which keep OCR only in the session context. It now shows the
+  front OCR fields and the decoded back barcode/MRZ.
+
+### Security
+- Upgrade `axios` to 1.20.0 (12 advisories in 1.19.0, including redirect-based
+  SSRF reachable through webhook delivery).
+
 ## [1.12.25] - 2026-10-06
 
 ### Fixed
