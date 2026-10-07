@@ -5,6 +5,40 @@ All notable changes to the Idswyft Main API are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.34] - 2026-10-07
+
+Merges upstream team-idswyft/idswyft-community 1.12.20 – 1.12.33 (listed in
+their own section below).
+
+### Added
+- **Restart after a rejection on the hosted page and on the phone (#53):** a
+  verification that is already rejected opens on the result screen with
+  "Try Again" and "Return without retrying" (translated en/es), instead of a
+  dead-end upload error.
+- **Abandoned capture cleanup:** an hourly job deletes the images of
+  `pending`/`processing` verifications whose session link has expired.
+- Migrations 61 (`verification_requests.addons`, already present here), 62
+  (`developers.llm_model`) and 63 (Kazivio service product).
+
+### Fixed
+- **Desktop "Continue on phone" QR code** crashed the page (React error #130):
+  `react-qr-code` 2.0 is CommonJS-only and Vite 8 handed its default import
+  over as an object. Upgraded to 2.2.0, which ships an ES module build.
+- **Barcode loader:** backend and engine share one ZXing loader in
+  `@idswyft/shared` that fails loudly at load time; `@zxing/library` is pinned
+  to 0.21.3 in both, and the backend now declares it instead of borrowing the
+  engine's copy.
+- **`voice-capture`** wrote the nonexistent `completed_at` column (upstream fix).
+- **`issuing_country`** is stored on the verification row and restored after
+  a restart, so a non-US document is not re-read with the US extractor.
+
+### Changed
+- `react-router-dom` back to v7 (7.18.4).
+- `@vitejs/plugin-react` 6, `@vitejs/plugin-basic-ssl` 2 and ESLint plugins that
+  accept ESLint 10; the frontend lockfile is regenerated and the Docker build no
+  longer relies on npm overriding peer dependencies.
+- CI runs the frontend test suite.
+
 ## [1.12.26] - 2026-10-06
 
 ### Fixed
