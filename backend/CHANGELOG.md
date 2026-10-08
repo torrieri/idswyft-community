@@ -5,6 +5,15 @@ All notable changes to the Idswyft Main API are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.36] - 2026-10-08
+
+### Fixed
+- **Manual review decisions were reverted.** The consistency monitor recomputed
+  the status of reviewed verifications from their automatic scores every five
+  minutes, so an approved verification with a low liveness score went back to
+  `manual_review` without a webhook. A reviewer's decision is now final and the
+  monitor skips reviewed verifications.
+
 ## [1.12.35] - 2026-10-07
 
 ### Security
