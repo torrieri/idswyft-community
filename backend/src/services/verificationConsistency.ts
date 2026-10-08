@@ -73,8 +73,11 @@ export class VerificationConsistencyService {
     // Calculate overall confidence score
     scores.confidence_score = this.calculateConfidenceScore(scores, verification.documents?.[0]);
 
-    // Determine final status based on all scores
-    const final_status = this.determineFinalStatus(scores, thresholds, verification);
+    // Determine final status based on all scores, unless a reviewer already
+    // decided it: a manual decision overrides the automatic thresholds.
+    const final_status: VerificationState = verification.reviewed_at
+      ? verification.status
+      : this.determineFinalStatus(scores, thresholds, verification);
 
     // Update database with consistent scores
     await supabase

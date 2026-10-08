@@ -55,12 +55,14 @@ export class ConsistencyMonitor {
     try {
       logger.debug('Running consistency check...');
 
-      // Get recent verifications (last 24 hours)
+      // Get recent verifications (last 24 hours). A reviewer's decision is
+      // final, so reviewed verifications are never re-derived from the scores.
       const { data: recentVerifications, error } = await supabase
         .from('verification_requests')
         .select('id, status, created_at, updated_at')
         .gte('updated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
         .in('status', ['verified', 'failed', 'manual_review'])
+        .is('reviewed_at', null)
         .order('updated_at', { ascending: false })
         .limit(50);
 
