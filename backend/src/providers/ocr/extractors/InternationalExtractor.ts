@@ -272,7 +272,7 @@ export class InternationalExtractor extends BaseExtractor {
       }
     }
 
-    logger.info('EU DL numbered fields extracted', { fields: Object.fromEntries(fields) });
+    logger.info('EU DL numbered fields extracted', { fieldNumbers: Array.from(fields.keys()) });
 
     const stripTrailingNoise = (s: string) =>
       s.replace(/\s+\d{1,2}[\.\-\/]\d{1,2}[\.\-\/]\d{2,4}.*$/, '')

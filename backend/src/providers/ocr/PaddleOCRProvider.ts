@@ -160,7 +160,7 @@ export class PaddleOCRProvider implements OCRProvider {
       documentType: resolvedDocType,
       issuingCountry: country,
       fields: Object.keys(ocrData).filter(k => k !== 'raw_text' && k !== 'confidence_scores'),
-      ocrData,
+      rawTextLength: typeof ocrData.raw_text === 'string' ? ocrData.raw_text.length : 0,
     });
 
     return ocrData;

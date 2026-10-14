@@ -156,7 +156,7 @@ export function crossValidate(
   if (dlValidation.verdict !== 'SKIP') {
     const dlIcon = dlValidation.verdict === 'PASS' ? '✅' : dlValidation.verdict === 'FAIL' ? '⚠️' : '🔍';
     console.log(`${dlIcon} dl_format_validation (w=0, supplementary): verdict=${dlValidation.verdict}`);
-    console.log(`     id_number: "${frontIdNumber}" | detail: ${dlValidation.detail}`);
+    console.log(`     detail: ${dlValidation.detail}`);
   }
 
   // ── Address Validation (weight 0 — supplementary signal) ──

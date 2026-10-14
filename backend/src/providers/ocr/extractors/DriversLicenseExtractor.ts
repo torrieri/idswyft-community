@@ -32,8 +32,9 @@ export class DriversLicenseExtractor extends BaseExtractor {
 
     logger.info('PaddleOCR DL extraction — raw lines', {
       lineCount: flatLines.length,
+      // Layout only: the text itself is the applicant's personal data
       lines: flatLines.map((l, i) =>
-        `[${i}] y=${Math.round(l.y)} x=${Math.round(l.x)} (${l.confidence.toFixed(2)}) "${l.text}"`
+        `[${i}] y=${Math.round(l.y)} x=${Math.round(l.x)} (${l.confidence.toFixed(2)}) len=${l.text.length}`
       ),
     });
 

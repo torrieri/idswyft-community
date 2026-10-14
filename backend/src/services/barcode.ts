@@ -287,8 +287,8 @@ export class BarcodeService {
         console.log('✅ PDF417 + OCR scanning successful:', {
           pdf417_confidence: pdf417Data.confidence,
           pdf417_validation: pdf417Data.validation_status,
-          license_number: pdf417Data.parsed_data.licenseNumber,
-          name: `${pdf417Data.parsed_data.firstName || ''} ${pdf417Data.parsed_data.lastName || ''}`.trim()
+          has_license_number: !!pdf417Data.parsed_data.licenseNumber,
+          has_name: !!(pdf417Data.parsed_data.firstName || pdf417Data.parsed_data.lastName)
         });
       }
       
@@ -328,7 +328,6 @@ export class BarcodeService {
       const ocrText = ocrData.raw_text || '';
       
       console.log(`📄 OCR text analysis: length=${ocrText.length}, hasIdNumber=${!!ocrData.parsed_data?.id_number}`);
-      console.log(`📄 OCR first 100 chars: "${ocrText.substring(0, 100)}"`);
       
       // If OCR text is completely empty, this might be a processing issue
       if (ocrText.length === 0) {
@@ -501,7 +500,6 @@ export class BarcodeService {
             const decodedText = result.getText();
             console.log(`✅ PDF417 decoded: strategy="${strategyName}", binarizer=${binName}, reader=${reader.constructor.name}`, {
               length: decodedText.length,
-              preview: decodedText.substring(0, 80) + '...',
             });
             return decodedText;
           }
@@ -523,7 +521,7 @@ export class BarcodeService {
     
     try {
       console.log('📄 Manually parsing AAMVA field codes...');
-      console.log(`🔍 Raw AAMVA data (first 200 chars): ${rawData.substring(0, 200)}`);
+      console.log(`🔍 Raw AAMVA data received (${rawData.length} chars)`);
       
       // AAMVA field code mappings
       const aamvaFields = {
@@ -598,7 +596,7 @@ export class BarcodeService {
           }
           
           fields[fieldName] = value;
-          console.log(`📄 AAMVA ${code} (${fieldName}): ${value}`);
+          console.log(`📄 AAMVA ${code} (${fieldName}) parsed`);
         }
       }
       
@@ -618,20 +616,14 @@ export class BarcodeService {
           const match = rawData.match(pattern);
           if (match && match[1]) {
             fields.licenseNumber = match[1].trim();
-            console.log(`📄 Found license number with fallback pattern: ${fields.licenseNumber}`);
+            console.log('📄 Found license number with fallback pattern');
             break;
           }
         }
         
         if (!fields.licenseNumber) {
-          console.log('🔍 Still no license number found, showing all DAQ occurrences in raw data:');
-          const allDAQMatches = [...rawData.matchAll(/DAQ/gi)];
-          allDAQMatches.forEach((match, i) => {
-            const start = Math.max(0, match.index! - 10);
-            const end = Math.min(rawData.length, match.index! + 30);
-            const context = rawData.substring(start, end);
-            console.log(`📄 DAQ occurrence ${i + 1}: "${context}"`);
-          });
+          const daqOccurrences = [...rawData.matchAll(/DAQ/gi)].length;
+          console.log(`🔍 Still no license number found (${daqOccurrences} DAQ occurrences in raw data)`);
         }
       }
       
@@ -904,7 +896,7 @@ export class BarcodeService {
     
     // Clean the text
     const cleanText = ocrText.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
-    console.log('🔧 Cleaned OCR text:', cleanText.substring(0, 200) + '...');
+    console.log(`🔧 Cleaned OCR text (${cleanText.length} chars)`);
     
     const result: BackOfIdData = {
       parsed_data: {},
@@ -937,7 +929,7 @@ export class BarcodeService {
               !skipWords.some(word => normalizedCandidate.includes(word)) &&
               normalizedCandidate.length >= 6) {
             result.parsed_data!.id_number = normalizedCandidate;
-            console.log('✅ ID Number found:', result.parsed_data!.id_number);
+            console.log('✅ ID Number found');
             break;
           }
         }
@@ -960,7 +952,7 @@ export class BarcodeService {
           // Only consider future dates as expiry dates
           if (date && date > new Date()) {
             result.parsed_data!.expiry_date = this.standardizeDateFormat(dateStr);
-            console.log('✅ Expiry Date found:', result.parsed_data!.expiry_date);
+            console.log('✅ Expiry Date found');
             break;
           }
         }
@@ -978,7 +970,7 @@ export class BarcodeService {
       const match = cleanText.match(pattern);
       if (match && match[1] && match[1].length > 10) {
         result.parsed_data!.address = match[1].trim().replace(/\s+/g, ' ');
-        console.log('✅ Address found:', result.parsed_data!.address);
+        console.log('✅ Address found');
         break;
       }
     }
@@ -994,7 +986,7 @@ export class BarcodeService {
       const match = cleanText.match(pattern);
       if (match && match[1] && match[1].length > 3) {
         result.parsed_data!.issuing_authority = match[1].trim().replace(/\s+/g, ' ');
-        console.log('✅ Issuing Authority found:', result.parsed_data!.issuing_authority);
+        console.log('✅ Issuing Authority found');
         break;
       }
     }
@@ -1208,7 +1200,7 @@ export class BarcodeService {
         const pdf417IdNormalized = pdf417.licenseNumber.replace(/\s+/g, '');
         const frontIdNormalized = frontIdNumber.replace(/\s+/g, '');
         
-        console.log(`🔍 ID number comparison: front="${frontIdNumber}" -> "${frontIdNormalized}" vs PDF417="${pdf417.licenseNumber}" -> "${pdf417IdNormalized}"`);
+        console.log(`🔍 ID number comparison: match=${pdf417IdNormalized === frontIdNormalized}`);
         
         if (pdf417IdNormalized === frontIdNormalized) {
           fieldsMatched++;
@@ -1283,7 +1275,7 @@ export class BarcodeService {
         const frontHeightAAMVA = this.convertToAAMVAHeight(frontHeight);
         const pdf417HeightAAMVA = pdf417.height;
         
-        console.log(`🔍 Height comparison: front="${frontHeight}" -> AAMVA="${frontHeightAAMVA}" vs PDF417="${pdf417HeightAAMVA}"`);
+        console.log(`🔍 Height comparison: match=${frontHeightAAMVA === pdf417HeightAAMVA}`);
         
         if (frontHeightAAMVA === pdf417HeightAAMVA) {
           fieldsMatched++;

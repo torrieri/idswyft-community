@@ -443,7 +443,7 @@ export class PaddleOCRProvider implements OCRProvider {
       documentType: resolvedDocType,
       issuingCountry: country,
       fields: Object.keys(ocrData).filter(k => k !== 'raw_text' && k !== 'confidence_scores'),
-      ocrData,
+      rawTextLength: typeof ocrData.raw_text === 'string' ? ocrData.raw_text.length : 0,
     });
 
     return ocrData;
@@ -576,8 +576,9 @@ export class PaddleOCRProvider implements OCRProvider {
 
     logger.info('PaddleOCR DL extraction — raw lines', {
       lineCount: flatLines.length,
+      // Layout only: the text itself is the applicant's personal data
       lines: flatLines.map((l, i) =>
-        `[${i}] y=${Math.round(l.y)} x=${Math.round(l.x)} (${l.confidence.toFixed(2)}) "${l.text}"`
+        `[${i}] y=${Math.round(l.y)} x=${Math.round(l.x)} (${l.confidence.toFixed(2)}) len=${l.text.length}`
       ),
     });
 
@@ -1917,7 +1918,7 @@ export class PaddleOCRProvider implements OCRProvider {
       }
     }
 
-    logger.info('EU DL numbered fields extracted', { fields: Object.fromEntries(fields) });
+    logger.info('EU DL numbered fields extracted', { fieldNumbers: Array.from(fields.keys()) });
 
     // Helper: strip trailing date patterns and numbers from name values
     const stripTrailingNoise = (s: string) =>
