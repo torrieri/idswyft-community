@@ -5,6 +5,16 @@ All notable changes to the Idswyft Main API are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.37] - 2026-10-14
+
+### Security
+- **OCR logs no longer contain personal data.** The engine logged the full OCR
+  result of every document (raw text, name, document number, dates), each line
+  read from a driving licence and the values of EU numbered licence fields. The
+  backend's OCR path, barcode reader and cross-validator printed licence
+  numbers, names, addresses and decoded barcode fields. These logs now record
+  metadata only (fields extracted, layout, confidence, lengths, match results).
+
 ## [1.12.36] - 2026-10-08
 
 ### Fixed
