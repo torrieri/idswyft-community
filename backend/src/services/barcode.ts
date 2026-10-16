@@ -892,7 +892,7 @@ export class BarcodeService {
   }
 
   private extractBackOfIdStructuredData(ocrText: string): BackOfIdData {
-    console.log('🔧 Extracting structured data from OCR text...');
+    console.log('🔧 Extracting structured data from OCR text, length:', ocrText.length);
     
     // Clean the text
     const cleanText = ocrText.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
