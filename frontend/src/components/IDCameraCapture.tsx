@@ -5,6 +5,7 @@ import { useCameraStream } from '../utils/camera/useCameraStream';
 import {
   ID_ASPECT_RATIO,
   ID_CAMERA_VIDEO_CONSTRAINTS,
+  computeIdCaptureOutputSize,
   computeIdCropRect,
   hasEnoughResolutionForOcr,
 } from '../utils/camera/idCapture';
@@ -59,6 +60,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
   const rollingRef = useRef<number[]>([]);
   const sharpSinceRef = useRef<number | null>(null);
   const capturedBlobRef = useRef<Blob | null>(null);
+  const capturedUrlRef = useRef<string | null>(null);
   const lastAnalysisRef = useRef<number>(0);
   const streamStartRef = useRef<number>(0);    // Tracks when streaming began (for warm-up)
   const mountedRef = useRef(true);
@@ -69,7 +71,10 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
     return () => {
       mountedRef.current = false;
       stopStream();
-      if (capturedUrl) URL.revokeObjectURL(capturedUrl);
+      // capturedUrlRef, not the closed-over capturedUrl state (this effect
+      // has empty deps, so that would always be the initial null and never
+      // actually revoke the real URL).
+      if (capturedUrlRef.current) URL.revokeObjectURL(capturedUrlRef.current);
     };
   }, []);
 
@@ -207,51 +212,58 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
   }, [state]);
 
   // ── Capture logic ────────────────────────────────────────────────────────
+  // Wrapped in try/catch end-to-end: any failure here (a null blob or a
+  // thrown exception) must surface the error state, otherwise the stream is
+  // already stopped and the user is left on a frozen preview with no retry.
+  //
+  // Draws the ID crop straight from the video in one drawImage call, so no
+  // full-frame canvas is allocated. The output keeps the native crop
+  // resolution OCR needs, capped only for sensors that exceed the requested 4K.
   const doCapture = useCallback(() => {
     const video = videoRef.current;
     const canvas = captureCanvasRef.current;
     if (!video || !canvas || state === 'captured') return;
 
-    // Full resolution
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    canvas.width = vw;
-    canvas.height = vh;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    try {
+      // Crop to the ID overlay region (center 85% width, matching aspect ratio)
+      const crop = computeIdCropRect(video.videoWidth, video.videoHeight);
+      const { width: outW, height: outH } = computeIdCaptureOutputSize(crop);
 
-    // Draw full frame
-    ctx.drawImage(video, 0, 0, vw, vh);
+      canvas.width = outW;
+      canvas.height = outH;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('2d context unavailable');
 
-    // Crop to the ID overlay region (center 85% width, matching aspect ratio)
-    const { x: cropX, y: cropY, width: cropW, height: cropH } = computeIdCropRect(vw, vh);
+      ctx.drawImage(video, crop.x, crop.y, crop.width, crop.height, 0, 0, outW, outH);
 
-    // Create a crop canvas
-    const cropCanvas = document.createElement('canvas');
-    cropCanvas.width = cropW;
-    cropCanvas.height = cropH;
-    const cropCtx = cropCanvas.getContext('2d');
-    if (!cropCtx) return;
-    cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+      // Auto-contrast: normalize pixel histogram
+      applyAutoContrast(ctx, outW, outH);
 
-    // Auto-contrast: normalize pixel histogram
-    applyAutoContrast(cropCtx, cropW, cropH);
+      // Shutter flash effect
+      setShowFlash(true);
+      setTimeout(() => { if (mountedRef.current) setShowFlash(false); }, 300);
 
-    // Shutter flash effect
-    setShowFlash(true);
-    setTimeout(() => { if (mountedRef.current) setShowFlash(false); }, 300);
+      // Stop the stream and analysis
+      stopStream();
 
-    // Stop the stream and analysis
-    stopStream();
-
-    // Convert to JPEG blob
-    cropCanvas.toBlob(blob => {
-      if (!blob || !mountedRef.current) return;
-      capturedBlobRef.current = blob;
-      setCapturedUrl(URL.createObjectURL(blob));
-      setState('captured');
-    }, 'image/jpeg', 0.92);
-  }, [state, stopStream]);
+      // Convert to JPEG blob
+      canvas.toBlob(blob => {
+        if (!mountedRef.current) return;
+        if (!blob) {
+          setError(t('idcam.error.captureFailed'));
+          return;
+        }
+        capturedBlobRef.current = blob;
+        const url = URL.createObjectURL(blob);
+        capturedUrlRef.current = url;
+        setCapturedUrl(url);
+        setState('captured');
+      }, 'image/jpeg', 0.92);
+    } catch {
+      stopStream();
+      if (mountedRef.current) setError(t('idcam.error.captureFailed'));
+    }
+  }, [state, stopStream, t]);
 
   // ── Auto-contrast preprocessing ──────────────────────────────────────────
   function applyAutoContrast(ctx: CanvasRenderingContext2D, w: number, h: number) {
@@ -290,6 +302,7 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
 
   const handleRetake = useCallback(() => {
     if (capturedUrl) URL.revokeObjectURL(capturedUrl);
+    capturedUrlRef.current = null;
     setCapturedUrl(null);
     capturedBlobRef.current = null;
     rollingRef.current = [];
@@ -364,6 +377,15 @@ const IDCameraCapture: React.FC<IDCameraCaptureProps> = ({
         <img
           src={capturedUrl}
           alt={t('idcam.capturedAlt')}
+          onError={() => {
+            // The blob URL was created but the browser couldn't decode it -
+            // same silent-dead-end failure mode as toBlob() returning null
+            // above, just discovered later. Surface it the same way instead
+            // of leaving a permanently broken image on screen.
+            if (mountedRef.current) {
+              setError(t('idcam.error.previewFailed'));
+            }
+          }}
           style={{
             position: 'absolute', inset: 0,
             width: '100%', height: '100%',

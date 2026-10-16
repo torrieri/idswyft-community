@@ -420,6 +420,8 @@ export const es: Catalog = {
   'idcam.guidance.sharp': '¡Perfecto! Capturando…',
   'idcam.error.noAccess': 'No se pudo acceder a la cámara. Revisa los permisos.',
   'idcam.error.restartFailed': 'No se pudo reiniciar la cámara.',
+  'idcam.error.captureFailed': 'No se pudo procesar la foto. Inténtalo de nuevo.',
+  'idcam.error.previewFailed': 'No se pudo cargar la foto tomada. Inténtalo de nuevo.',
   'idcam.capturedAlt': 'Documento capturado',
   'idcam.closeLabel': 'Cerrar la cámara',
 

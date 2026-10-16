@@ -424,6 +424,8 @@ export const en = {
   'idcam.guidance.sharp': 'Perfect! Capturing…',
   'idcam.error.noAccess': 'Unable to access camera. Please check permissions.',
   'idcam.error.restartFailed': 'Could not restart camera.',
+  'idcam.error.captureFailed': 'Could not process the photo. Please try again.',
+  'idcam.error.previewFailed': 'The captured photo could not be loaded. Please try again.',
   'idcam.capturedAlt': 'Captured ID',
   'idcam.closeLabel': 'Close camera',
 

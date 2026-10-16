@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
+  computeIdCaptureOutputSize,
   computeIdCropRect,
   hasEnoughResolutionForOcr,
+  MAX_ID_CAPTURE_WIDTH_PX,
   ID_CAMERA_VIDEO_CONSTRAINTS,
   MIN_ID_CROP_WIDTH_PX,
 } from './idCapture';
@@ -57,5 +59,27 @@ describe('ID_CAMERA_VIDEO_CONSTRAINTS', () => {
       width: { ideal: 3840 },
       height: { ideal: 2160 },
     });
+  });
+});
+
+describe('computeIdCaptureOutputSize', () => {
+  it('keeps the native crop size of a 4K stream, the resolution OCR relies on', () => {
+    const crop = computeIdCropRect(3840, 2160);
+
+    expect(computeIdCaptureOutputSize(crop)).toEqual({ width: 3264, height: 2058 });
+  });
+
+  it('keeps a crop smaller than the cap untouched', () => {
+    const crop = computeIdCropRect(1080, 1920);
+
+    expect(computeIdCaptureOutputSize(crop)).toEqual({ width: 918, height: 578 });
+  });
+
+  it('downscales sensors that report more than the requested resolution, keeping the aspect ratio', () => {
+    const crop = computeIdCropRect(8000, 6000);
+    const size = computeIdCaptureOutputSize(crop);
+
+    expect(size.width).toBe(MAX_ID_CAPTURE_WIDTH_PX);
+    expect(size.height).toBe(Math.floor(MAX_ID_CAPTURE_WIDTH_PX * crop.height / crop.width));
   });
 });
