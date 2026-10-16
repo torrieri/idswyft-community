@@ -44,6 +44,7 @@ import { screenAll } from '@/providers/aml/multiScreen.js';
 import { computeRiskScore } from '@/services/riskScoring.js';
 import { analyzeVelocity } from '@/services/velocityAnalysis.js';
 import { analyzeGeoRisk } from '@/services/geoAnalysis.js';
+import { recordApplicantIp } from '@/services/applicantIp.js';
 import { broadcastStatusChange } from '@/services/realtime.js';
 import { saveSessionState, loadSessionState } from '@/services/sessionPersistence.js';
 
@@ -1220,6 +1221,7 @@ router.post('/:verification_id/front-document',
     const { verification_id } = req.params;
     const { document_type = 'auto', issuing_country } = req.body;
     const verification = await requireOwnedVerification(req, verification_id);
+    await recordApplicantIp(req, verification_id);
     const isSandbox = (verification as any).is_sandbox || false;
     const source: VerificationSource = (verification as any).source || 'api';
 
@@ -1583,6 +1585,7 @@ router.post('/:verification_id/back-document',
     const { verification_id } = req.params;
     const { document_type = 'other' } = req.body;
     const verification = await requireOwnedVerification(req, verification_id);
+    await recordApplicantIp(req, verification_id);
     const isSandbox = (verification as any).is_sandbox || false;
     const source: VerificationSource = (verification as any).source || 'api';
 
@@ -1829,6 +1832,8 @@ router.post('/:verification_id/live-capture',
 
     const { verification_id } = req.params;
     const verification = await requireOwnedVerification(req, verification_id);
+    // Before the velocity/geo analysis below reads client_ip back
+    await recordApplicantIp(req, verification_id);
     const isSandbox = (verification as any).is_sandbox || false;
     const source: VerificationSource = (verification as any).source || 'api';
 
