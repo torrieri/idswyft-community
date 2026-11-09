@@ -5,6 +5,42 @@ All notable changes to the Idswyft Main API are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.38] - 2026-11-09
+
+Merges upstream team-idswyft/idswyft-community 1.12.34 – 1.12.39 by
+cherry-pick. Upstream's sharp bump and engine log redaction were already
+covered by 1.12.35 and 1.12.37.
+
+### Security
+- **Document files are only served to their owner.** `serveLocalFile` checked
+  the API key but not that the requested document belonged to that developer
+  (IDOR).
+- **Cross-validator logs no longer print front/back field values**, only their
+  presence and length.
+
+### Changed
+- **`country_mismatch` alone no longer sends a verification to manual
+  review.** The flag still appears in `geo_analysis.flags` and the risk score;
+  `tor_exit_node`, `datacenter_ip` and `high_risk_country` still route to
+  review. `geoip-lite` is pinned to 2.0.2 and its version is recorded in
+  `geo_analysis.geoip_data_version`.
+- Bare `/health` returns `status: "ok"` (was `"healthy"`). The HTTP status code
+  is unchanged.
+- The status response includes `document_authenticity`.
+
+### Fixed
+- IPv4-mapped IPv6 addresses (`::ffff:a.b.c.d`) are unwrapped before geo
+  lookups, and the applicant's IP is recorded for velocity and geo analysis.
+- The liveness and deepfake result is saved even when Gate 4 rejects the live
+  capture.
+- Abandoned-capture cleanup waits a grace period and retries each file on its
+  own; restarting a verification deletes the failed attempt's image files
+  before its rows.
+- Storage write errors keep the underlying cause.
+- **ID capture no longer freezes on a failed photo.** A failed capture or an
+  unreadable preview now shows an error with a way back. The capture keeps the
+  native 4K card crop and is capped only for cameras that exceed it.
+
 ## [1.12.37] - 2026-10-14
 
 ### Security
